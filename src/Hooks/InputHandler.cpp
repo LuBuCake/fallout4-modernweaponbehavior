@@ -13,6 +13,7 @@
 */
 
 #include "InputHandler.h"
+#include "Melee/HoldBlock.h"
 #include "Reload/LoopReload.h"
 #include "Reload/SightedReload.h"
 #include "Weapon/ScopeSway.h"
@@ -41,7 +42,10 @@ namespace
             const auto& UserEvent = Event->QUserEvent();
 
             if (UserEvent == "SecondaryAttack"sv)
+            {
                 SightedReload::SetAimButton(Event->value != 0.0f);
+                HoldBlock::SetBlockButton(Event->value != 0.0f);
+            }
 
             ScopeSway::OnButton(*Event);
 

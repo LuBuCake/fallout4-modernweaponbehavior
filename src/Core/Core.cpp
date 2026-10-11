@@ -29,14 +29,17 @@
 #include "Hooks/NotifyAnimationGraphHook.h"
 #include "Hooks/QueuedEventHook.h"
 #include "Hooks/UpdateAnimationHook.h"
+#include "Melee/HoldBlock.h"
 #include "Papyrus/Papyrus.h"
 #include "Reload/BoltChargeResync.h"
 #include "Reload/BulletInChamber.h"
 #include "Reload/DropUnspentAmmo.h"
 #include "Reload/LoopReload.h"
+#include "Reload/ManualReload.h"
 #include "Reload/SightedReload.h"
 #include "Reload/TacticalReload.h"
 #include "Settings/Settings.h"
+#include "Sprint/SprintFire.h"
 #include "Sprint/SprintSpeed.h"
 #include "Weapon/FireMode.h"
 #include "Weapon/FireModePose.h"
@@ -105,8 +108,10 @@ namespace Core
         ArmSpace::Install();
         Hooks::InstallGraphGenerateHook();
         BulletInChamber::Install();
+        ManualReload::Install();
         ScopeSway::Install();
         SprintSpeed::Install();
+        SprintFire::Install();
         WeaponHUD::Install();
         Settings::InstallMenuWatcher();
     }
@@ -126,6 +131,8 @@ namespace Core
         BulletInChamber::Reset();
         DropUnspentAmmo::Reset();
         ScopeSway::Reset();
+        HoldBlock::Reset();
+        SprintFire::Reset();
     }
 
     void PostLoadGame()

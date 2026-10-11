@@ -344,7 +344,7 @@ namespace
         inline static REL::Relocation<decltype(Thunk)> Original;
     };
 
-    [[nodiscard]] std::optional<std::uintptr_t> FindCall(std::uintptr_t Begin, std::size_t Size, std::optional<std::uintptr_t> Target)
+    [[nodiscard]] std::optional<std::uintptr_t> FindCall(std::uintptr_t Begin, std::size_t Size, std::uintptr_t Target)
     {
         std::optional<std::uintptr_t> Found;
 
@@ -357,10 +357,7 @@ namespace
 
             const auto Callee = static_cast<std::uintptr_t>(static_cast<std::intptr_t>(At + 5) + *reinterpret_cast<const std::int32_t*>(At + 1));
 
-            if (!Target)
-                return At;
-
-            if (Callee != *Target)
+            if (Callee != Target)
                 continue;
 
             if (Found)
@@ -375,6 +372,85 @@ namespace
     [[nodiscard]] std::uintptr_t CallTarget(std::uintptr_t Site)
     {
         return static_cast<std::uintptr_t>(static_cast<std::intptr_t>(Site + 5) + *reinterpret_cast<const std::int32_t*>(Site + 1));
+    }
+
+    [[nodiscard]] bool IsExecutable(std::uintptr_t Address)
+    {
+        constexpr std::uint32_t PageExecuteWriteCopy = 0x80;
+        constexpr std::uint32_t ExecutableProtection = REX::W32::PAGE_EXECUTE | REX::W32::PAGE_EXECUTE_READ | REX::W32::PAGE_EXECUTE_READWRITE | PageExecuteWriteCopy;
+
+        REX::W32::MEMORY_BASIC_INFORMATION Info{};
+
+        if (REX::W32::VirtualQuery(reinterpret_cast<const void*>(Address), &Info, sizeof(Info)) != sizeof(Info))
+            return false;
+
+        return Info.state == REX::W32::MEM_COMMIT && (Info.protect & ExecutableProtection) != 0;
+    }
+
+    [[nodiscard]] bool IsForeignHook(std::uintptr_t Callee)
+    {
+        const auto Text = REX::FModule::GetExecutingModule().GetSection(".text");
+        const auto InGameCode = Callee >= Text.GetAddress() && Callee < Text.GetAddress() + Text.GetSize();
+
+        return !InGameCode && IsExecutable(Callee);
+    }
+
+    using ArgumentsSignature = bool(RE::BSScrapArray<RE::BSScript::Variable>&);
+
+    class NoArguments
+    {
+    public:
+        virtual NoArguments* Copy(void*) const { return nullptr; }
+        virtual NoArguments* Move(void*) noexcept { return nullptr; }
+        virtual bool Call(RE::BSScrapArray<RE::BSScript::Variable>&) { return true; }
+        virtual const std::type_info& TargetType() const noexcept { return typeid(void); }
+        virtual void DeleteThis(bool) noexcept {}
+        virtual const void* Get() const noexcept { return nullptr; }
+    };
+
+    struct GameArguments
+    {
+        static constexpr std::size_t OGFunctorSlot = 3;
+        static constexpr std::size_t FunctorSlot = 7;
+
+        explicit GameArguments(NoArguments* Functor) noexcept
+        {
+            Slots[OGFunctorSlot] = Functor;
+            Slots[FunctorSlot] = Functor;
+        }
+
+        [[nodiscard]] const RE::BSTThreadScrapFunction<ArgumentsSignature>& AsFunction() const noexcept
+        {
+            return *reinterpret_cast<const RE::BSTThreadScrapFunction<ArgumentsSignature>*>(this);
+        }
+
+        alignas(RE::BSTThreadScrapFunction<ArgumentsSignature>) std::array<void*, 8> Slots{};
+    };
+
+    static_assert(sizeof(GameArguments) == sizeof(RE::BSTThreadScrapFunction<ArgumentsSignature>));
+
+    [[nodiscard]] bool CallWithoutArguments(RE::BSScript::IVirtualMachine& VM, std::uint64_t Handle, const RE::BSFixedString& Script, const RE::BSFixedString& Function)
+    {
+        NoArguments Functor;
+        const GameArguments Arguments{ &Functor };
+
+        return VM.DispatchMethodCall(Handle, Script, Function, Arguments.AsFunction(), RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor>{});
+    }
+
+    [[nodiscard]] std::optional<std::uintptr_t> FindSetter(std::uintptr_t Begin, std::uintptr_t Vanilla)
+    {
+        if (const auto Direct = FindCall(Begin, SetterScan, Vanilla))
+            return Direct;
+
+        for (std::size_t i = 0; i + 5 <= SetterScan; ++i)
+        {
+            const auto At = Begin + i;
+
+            if (*reinterpret_cast<const std::uint8_t*>(At) == 0xE8 && IsForeignHook(CallTarget(At)))
+                return At;
+        }
+
+        return std::nullopt;
     }
 }
 
@@ -392,15 +468,14 @@ namespace ScopeSway
             return;
         }
 
-        const auto Setter = FindCall(*Wobble + 5, SetterScan, std::nullopt);
+        const auto Vanilla = REL::Relocation<std::uintptr_t>{ RE::ID::IAnimationGraphManagerHolder::SetGraphVariableFloat }.address();
+        const auto Setter = FindSetter(*Wobble + 5, Vanilla);
 
         if (!Setter)
         {
             REX::WARN("The AimWobble setter was not found after {:X}. The aim sway options do nothing.", *Wobble);
             return;
         }
-
-        const auto Vanilla = REL::Relocation<std::uintptr_t>{ RE::ID::IAnimationGraphManagerHolder::SetGraphVariableFloat }.address();
 
         if (CallTarget(*Setter) != Vanilla)
             REX::INFO("The AimWobble setter at {:X} already goes to {:X}, not the game's {:X} (another mod); chaining to it", *Setter, CallTarget(*Setter), Vanilla);
@@ -518,8 +593,7 @@ namespace ScopeSway
 
             if (Handle != Handles.EmptyHandle())
             {
-                Called = VM->DispatchMethodCall(Handle, RE::BSFixedString{ "SeeThroughScopesController" }, RE::BSFixedString{ "updateHoldBreathSetting" },
-                    RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor>{});
+                Called = CallWithoutArguments(*VM, Handle, RE::BSFixedString{ "SeeThroughScopesController" }, RE::BSFixedString{ "updateHoldBreathSetting" });
             }
         }
 

@@ -12,7 +12,8 @@ This repository holds the source code of the plugin (`MWB.dll`) as released on N
 * Inspect, ammo check (with an on-screen magazine readout), special attack and fire mode switch, callable from Papyrus and MCM hotkeys.
 * Arm-only animations with weapon lock, slide lock and per fire mode weapon bone poses.
 * Animation annotations to fire ammo, use items and cast spells from any animation.
-* Weapon HUD module, bullet in the chamber and drop unspent ammo on reload.
+* Weapon HUD module, bullet in the chamber, drop unspent ammo on reload and manual reload.
+* Hold to block for melee and fists, and firing while sprinting in first person.
 * Aim sway and hold breath, the game's own, for regular scopes, 3D scopes and sights without a scope, each with its own setting.
 
 ## Supported Runtimes
@@ -82,10 +83,11 @@ src/
   HUD/         weapon HUD module and ammo check readout
   Hooks/       animation events, clip generators, graph generate, input, queued events, animation update
   Magic/       MWB_UseAlchemyItem and MWB_CastSpell annotations
+  Melee/       hold to block
   Papyrus/     native functions of the MWB script
-  Reload/      looped, sighted and tactical reload, bullet in the chamber, drop unspent ammo, bolt charge resync
+  Reload/      looped, sighted and tactical reload, bullet in the chamber, drop unspent ammo, manual reload, bolt charge resync
   Settings/    MWB.ini, MWB_Custom.ini and the MCM settings
-  Sprint/      sprint transitions, third person sprint camera and first person sprint speed
+  Sprint/      sprint transitions, third person sprint camera, first person sprint speed and firing while sprinting
   Weapon/      fire mode switch and pose, slide lock, weapon bones and scope sway
 ```
 

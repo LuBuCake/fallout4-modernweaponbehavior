@@ -22,6 +22,7 @@ namespace
     REX::TIniSetting<bool> VerboseLogSetting{ "General", "bVerboseLog", false };
     REX::TIniSetting<bool> BulletInChamberSetting{ "BulletInChamber", "bEnabled", false };
     REX::TIniSetting<bool> DropUnspentAmmoSetting{ "DropUnspentAmmo", "bEnabled", false };
+    REX::TIniSetting<bool> ManualReloadSetting{ "ManualReload", "bEnabled", false };
     REX::TIniSetting<bool> SlideLockSetting{ "SlideLock", "bEnabled", true };
     REX::TIniSetting<bool> FireModeSwitchSetting{ "FireModeSwitch", "bEnabled", true };
     REX::TIniSetting<bool> WeaponHUDSetting{ "WeaponHUD", "bEnabled", true };
@@ -29,6 +30,8 @@ namespace
     REX::TIniSetting<bool> AimWobbleVanillaScopesSetting{ "AimWobble", "bVanillaScopes", true };
     REX::TIniSetting<bool> AimWobble3DScopesSetting{ "AimWobble", "b3DScopes", true };
     REX::TIniSetting<bool> AimWobbleNoScopeSetting{ "AimWobble", "bNoScope", false };
+    REX::TIniSetting<bool> HoldBlockSetting{ "HoldBlock", "bEnabled", false };
+    REX::TIniSetting<bool> FireWhileSprintingSetting{ "FireWhileSprinting", "bEnabled", false };
 
     constexpr auto BaseFile = "Data/F4SE/Plugins/MWB.ini";
     constexpr auto CustomFile = "Data/F4SE/Plugins/MWB_Custom.ini";
@@ -46,6 +49,7 @@ namespace
         McmBool{ "General", "bVerboseLog", &VerboseLogSetting },
         McmBool{ "BulletInChamber", "bEnabled", &BulletInChamberSetting },
         McmBool{ "DropUnspentAmmo", "bEnabled", &DropUnspentAmmoSetting },
+        McmBool{ "ManualReload", "bEnabled", &ManualReloadSetting },
         McmBool{ "SlideLock", "bEnabled", &SlideLockSetting },
         McmBool{ "FireModeSwitch", "bEnabled", &FireModeSwitchSetting },
         McmBool{ "WeaponHUD", "bEnabled", &WeaponHUDSetting },
@@ -53,6 +57,8 @@ namespace
         McmBool{ "AimWobble", "bVanillaScopes", &AimWobbleVanillaScopesSetting },
         McmBool{ "AimWobble", "b3DScopes", &AimWobble3DScopesSetting },
         McmBool{ "AimWobble", "bNoScope", &AimWobbleNoScopeSetting },
+        McmBool{ "HoldBlock", "bEnabled", &HoldBlockSetting },
+        McmBool{ "FireWhileSprinting", "bEnabled", &FireWhileSprintingSetting },
     };
 
     bool FireModeSwitchAtStartup{ true };
@@ -76,11 +82,11 @@ namespace
 
     void LogValues(std::string_view When)
     {
-        REX::INFO("Settings ({}): verboseLog={}, bulletInChamber={}, dropUnspentAmmo={}, slideLock={}, fireModeSwitch={}, weaponHUD={}, "
-                  "thirdPersonSprintFOV={}, aimWobble(vanillaScopes={}, 3DScopes={}, noScope={})",
-            When, VerboseLogSetting.GetValue(), BulletInChamberSetting.GetValue(), DropUnspentAmmoSetting.GetValue(), SlideLockSetting.GetValue(),
-            FireModeSwitchSetting.GetValue(), WeaponHUDSetting.GetValue(), ThirdPersonSprintFOVSetting.GetValue(), AimWobbleVanillaScopesSetting.GetValue(),
-            AimWobble3DScopesSetting.GetValue(), AimWobbleNoScopeSetting.GetValue());
+        REX::INFO("Settings ({}): verboseLog={}, bulletInChamber={}, dropUnspentAmmo={}, manualReload={}, slideLock={}, fireModeSwitch={}, weaponHUD={}, "
+                  "thirdPersonSprintFOV={}, aimWobble(vanillaScopes={}, 3DScopes={}, noScope={}), holdBlock={}, fireWhileSprinting={}",
+            When, VerboseLogSetting.GetValue(), BulletInChamberSetting.GetValue(), DropUnspentAmmoSetting.GetValue(), ManualReloadSetting.GetValue(),
+            SlideLockSetting.GetValue(), FireModeSwitchSetting.GetValue(), WeaponHUDSetting.GetValue(), ThirdPersonSprintFOVSetting.GetValue(),
+            AimWobbleVanillaScopesSetting.GetValue(), AimWobble3DScopesSetting.GetValue(), AimWobbleNoScopeSetting.GetValue(), HoldBlockSetting.GetValue(), FireWhileSprintingSetting.GetValue());
     }
 }
 
@@ -122,6 +128,11 @@ namespace Settings
         return DropUnspentAmmoSetting.GetValue();
     }
 
+    bool ManualReload()
+    {
+        return ManualReloadSetting.GetValue();
+    }
+
     bool SlideLock()
     {
         return SlideLockSetting.GetValue();
@@ -155,5 +166,15 @@ namespace Settings
     bool AimWobbleNoScope()
     {
         return AimWobbleNoScopeSetting.GetValue();
+    }
+
+    bool HoldBlock()
+    {
+        return HoldBlockSetting.GetValue();
+    }
+
+    bool FireWhileSprinting()
+    {
+        return FireWhileSprintingSetting.GetValue();
     }
 }

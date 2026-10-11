@@ -32,6 +32,8 @@ namespace
     constexpr std::size_t BackgroundColorType = 0xAC;
     constexpr std::size_t ShaderChildren = 0x90;
     constexpr std::size_t ShaderChildCount = 0xA0;
+    constexpr std::size_t ExplosiveCount = 0x100;
+    constexpr std::int32_t MaxExplosiveCount = 99;
     constexpr std::uint32_t BackgroundEnabledBit = 1u;
     constexpr int MaxShaderChildDepth = 3;
     constexpr std::uint32_t MaxShaderChildren = 64;
@@ -491,6 +493,16 @@ namespace
         }
     }
 
+    [[nodiscard]] std::optional<int> ReadExplosiveCount(void* Component)
+    {
+        const auto Count = Field<std::int32_t>(Component, ExplosiveCount);
+
+        if (Count < 0)
+            return std::nullopt;
+
+        return std::min(Count, MaxExplosiveCount);
+    }
+
     void OnExplosiveCounterUpdated(void* Component)
     {
         auto& ExplosiveCounter = AsValue(Component);
@@ -498,7 +510,7 @@ namespace
         if (!ExplosiveCounter.IsDisplayObject())
             return;
 
-        const auto Count = ReadNumber(ExplosiveCounter, "AvailableCount_tf", "text");
+        const auto Count = ReadExplosiveCount(Component);
 
         if (bool Mine = false; Core::TryGetThrownIsMine(RE::PlayerCharacter::GetSingleton(), Mine))
             ThrownIsMine.store(Mine, std::memory_order_relaxed);

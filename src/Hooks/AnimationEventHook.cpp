@@ -22,6 +22,7 @@
 #include "Reload/LoopReload.h"
 #include "Reload/SightedReload.h"
 #include "Settings/Settings.h"
+#include "Sprint/SprintFire.h"
 #include "Sprint/SprintTransitions.h"
 #include "Weapon/FireMode.h"
 #include "Weapon/ScopeSway.h"
@@ -67,6 +68,7 @@ namespace
             const auto Result = Original(This, Event, EventSource);
             Reload::AfterGameHandles(ReloadAction);
             Sprint::OnAnimationEvent(Event.tag);
+            SprintFire::OnAnimationEvent(Event);
             SlideLock::OnAnimationEvent(Event.tag);
             AmmoFire::OnAnimationEvent(SinkOwner(This), Event);
             MagicAnnotations::OnAnimationEvent(SinkOwner(This), Event);

@@ -28,6 +28,8 @@ namespace Settings
 
     [[nodiscard]] bool DropUnspentAmmo();
 
+    [[nodiscard]] bool ManualReload();
+
     [[nodiscard]] bool SlideLock();
 
     [[nodiscard]] bool FireModeSwitch();
@@ -41,4 +43,8 @@ namespace Settings
     [[nodiscard]] bool AimWobble3DScopes();
 
     [[nodiscard]] bool AimWobbleNoScope();
+
+    [[nodiscard]] bool HoldBlock();
+
+    [[nodiscard]] bool FireWhileSprinting();
 }

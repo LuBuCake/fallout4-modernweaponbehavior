@@ -17,9 +17,11 @@
 #include "Actions/WeaponActions.h"
 #include "Arm/ArmAnimations.h"
 #include "Arm/ArmSpace.h"
+#include "Melee/HoldBlock.h"
 #include "Reload/BoltChargeResync.h"
 #include "Reload/DropUnspentAmmo.h"
 #include "Reload/TacticalReload.h"
+#include "Sprint/SprintFire.h"
 #include "Weapon/FireMode.h"
 #include "Weapon/ScopeSway.h"
 
@@ -92,11 +94,14 @@ namespace
                 TacticalReload::Refused();
             }
 
+            SprintFire::OnEventSending(*SentEvent);
             const bool Accepted = Original(This, *SentEvent);
             BoltChargeResync::OnEventSent(*SentEvent, Accepted);
             DropUnspentAmmo::OnEventSent(*SentEvent, Accepted);
             ArmSpace::OnEventSent(*SentEvent, Accepted);
             FireMode::OnEventSent(*SentEvent, Accepted);
+            HoldBlock::OnEventSent(*SentEvent, Accepted);
+            SprintFire::OnEventSent(*SentEvent, Accepted);
 
             return Accepted;
         }

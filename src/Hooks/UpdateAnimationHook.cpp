@@ -16,6 +16,7 @@
 #include "Magic/MagicAnnotations.h"
 #include "Arm/ArmSpace.h"
 #include "HUD/AmmoCheckDisplay.h"
+#include "Melee/HoldBlock.h"
 #include "ClipGeneratorHook.h"
 #include "Reload/BoltChargeResync.h"
 #include "Reload/DropUnspentAmmo.h"
@@ -23,6 +24,7 @@
 #include "Reload/SightedReload.h"
 #include "Settings/Settings.h"
 #include "Sprint/SprintCamera.h"
+#include "Sprint/SprintFire.h"
 #include "Sprint/SprintSpeed.h"
 #include "Sprint/SprintTransitions.h"
 #include "Weapon/FireMode.h"
@@ -57,6 +59,8 @@ namespace
             WeaponBones::EndFrame();
             AmmoCheckDisplay::Tick(This);
             ScopeSway::Tick(This, Delta);
+            HoldBlock::Tick(This, Delta);
+            SprintFire::Tick(This, Delta);
         }
 
         inline static REL::Relocation<decltype(Thunk)> Original;

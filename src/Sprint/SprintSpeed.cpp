@@ -13,6 +13,7 @@
 */
 
 #include "SprintSpeed.h"
+#include "Melee/HoldBlock.h"
 #include "Settings/Settings.h"
 
 namespace
@@ -30,7 +31,7 @@ namespace
         static bool Thunk(const RE::IMovementState* This, RE::Movement::MaxSpeeds& Speeds)
         {
             const bool Result = Original(This, Speeds);
-            const float CurrentScale = Scale.load(std::memory_order_relaxed);
+            const float CurrentScale = Scale.load(std::memory_order_relaxed) * HoldBlock::SpeedScale();
 
             if (Result && CurrentScale != 1.0f)
             {
