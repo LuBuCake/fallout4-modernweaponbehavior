@@ -132,11 +132,20 @@ namespace TacticalReload
 
     const RE::BSFixedString* Replace(const RE::BSFixedString& Event)
     {
-        if (!ReloadStart || Event != *ReloadStart)
+        if (!ReloadStart)
+            return nullptr;
+
+        const bool InjuredDown = Event == *InjuredDownReloadStart;
+
+        if (!InjuredDown && Event != *ReloadStart)
             return nullptr;
 
         const auto Player = RE::PlayerCharacter::GetSingleton();
         const bool ThirdPerson = Player && Player->Is3rdPersonVisible();
+
+        if (InjuredDown && !ThirdPerson)
+            return nullptr;
+
         const auto Weapon = Player ? Core::GetEquippedWeapon(Player) : std::nullopt;
         const auto Rule = Weapon ? WeaponConfig::MatchTactical(Weapon->Base, Weapon->Instance) : std::nullopt;
 
@@ -145,7 +154,7 @@ namespace TacticalReload
 
         if (Rule && Settings::VerboseLog())
         {
-            REX::INFO("Tactical reload: reloadStart with {} loaded, {} person ({}) -> {}", Loaded, ThirdPerson ? "third" : "first",
+            REX::INFO("Tactical reload: {} with {} loaded, {} person ({}) -> {}", Event.c_str(), Loaded, ThirdPerson ? "third" : "first",
                 ThirdPerson ? (Rule->ThirdPerson ? "on" : "off") : (Rule->FirstPerson ? "on" : "off"), Reserve ? "reserve reload" : "unchanged");
         }
 

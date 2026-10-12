@@ -8,7 +8,7 @@ This repository holds the source code of the plugin (`MWB.dll`) as released on N
 ## Features
 
 * Looped reload the way Bethesda does it in Fallout 76 and Starfield: one shell per pass, blended passes, cancel at the end of the pass.
-* Tactical reload, sighted reload, sprint transitions and sprinting equips, chosen per weapon through JSON files.
+* Tactical reload, sighted reload, sprint transitions and sprinting equips, chosen per weapon through JSON files, by weapon, keyword or form list.
 * Inspect, ammo check (with an on-screen magazine readout), special attack and fire mode switch, callable from Papyrus and MCM hotkeys.
 * Arm-only animations with weapon lock, slide lock and per fire mode weapon bone poses.
 * Animation annotations to fire ammo, use items and cast spells from any animation.

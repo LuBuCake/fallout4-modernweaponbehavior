@@ -34,6 +34,10 @@ namespace
     constexpr std::size_t ShaderChildCount = 0xA0;
     constexpr std::size_t ExplosiveCount = 0x100;
     constexpr std::int32_t MaxExplosiveCount = 99;
+    constexpr std::size_t ReceivedAmmoCounts = 0x1C0;
+    constexpr std::size_t ReceivedAmmoCountsSet = 0x1C8;
+    constexpr std::uint32_t MaxShownAmmoCount = 999;
+    constexpr std::uint32_t NoAmmoCount = 0xFFFFFFFF;
     constexpr std::uint32_t BackgroundEnabledBit = 1u;
     constexpr int MaxShaderChildDepth = 3;
     constexpr std::uint32_t MaxShaderChildren = 64;
@@ -89,6 +93,9 @@ namespace
 
         const RE::TESObjectWEAP* NameBase{ nullptr };
         std::string Name;
+
+        const RE::TESAmmo* AmmoNameBase{ nullptr };
+        std::string AmmoName;
     };
 
     State& HUD = *new State;
@@ -178,6 +185,30 @@ namespace
         const auto [End, Error] = std::from_chars(Text.data(), Text.data() + Text.size(), Number);
 
         return Error == std::errc{} && End == Text.data() + Text.size() ? std::optional{ Number } : std::nullopt;
+    }
+
+    struct ReceivedCounts
+    {
+        std::uint32_t Clip{ 0 };
+        std::uint32_t Reserve{ 0 };
+    };
+
+    [[nodiscard]] std::optional<ReceivedCounts> ReadReceivedCounts(void* Component)
+    {
+        if (!Field<bool>(Component, ReceivedAmmoCountsSet))
+            return std::nullopt;
+
+        const std::uint64_t Packed = std::atomic_ref{ Field<std::uint64_t>(Component, ReceivedAmmoCounts) }.load(std::memory_order_relaxed);
+
+        return ReceivedCounts{ .Clip = static_cast<std::uint32_t>(Packed & 0xFFFFFFFF), .Reserve = static_cast<std::uint32_t>(Packed >> 32) };
+    }
+
+    [[nodiscard]] int Uncapped(int Shown, std::optional<std::uint32_t> Received)
+    {
+        if (!Received || *Received == NoAmmoCount || *Received <= MaxShownAmmoCount || Shown != static_cast<int>(MaxShownAmmoCount))
+            return Shown;
+
+        return static_cast<int>(std::min<std::uint32_t>(*Received, std::numeric_limits<int>::max()));
     }
 
     void LogWidgetError()
@@ -371,6 +402,17 @@ namespace
         return HUD.Name;
     }
 
+    [[nodiscard]] std::string AmmoName(const RE::TESAmmo& Ammo)
+    {
+        if (&Ammo != HUD.AmmoNameBase)
+        {
+            HUD.AmmoNameBase = &Ammo;
+            HUD.AmmoName = StripSortingTags(RE::TESFullName::GetFullName(Ammo));
+        }
+
+        return HUD.AmmoName;
+    }
+
     [[nodiscard]] WeaponText ReadWeapon(const Core::EquippedWeapon& Weapon)
     {
         WeaponText Text{ .Name = WeaponName(Weapon) };
@@ -381,7 +423,7 @@ namespace
             Ammo = Weapon.Instance->ammo ? Weapon.Instance->ammo : Weapon.Base->weaponData.ammo;
 
         if (Ammo)
-            Text.Ammo = RE::TESFullName::GetFullName(*Ammo);
+            Text.Ammo = AmmoName(*Ammo);
 
         if (Weapon.Base->weaponData.type.get() == RE::WEAPON_TYPE::kGun)
             Text.Mode = Weapon.Instance->flags.any(RE::WEAPON_FLAGS::kAutomatic) ? "AUTO" : "SEMI";
@@ -434,11 +476,15 @@ namespace
             }
         }
 
-        const auto Clip = ReadNumber(Counter, "ClipCount_tf", "text");
-        const auto Reserve = ReadNumber(Counter, "ReserveCount_tf", "text");
+        auto Clip = ReadNumber(Counter, "ClipCount_tf", "text");
+        auto Reserve = ReadNumber(Counter, "ReserveCount_tf", "text");
 
         if (Clip && Reserve)
         {
+            const auto Received = ReadReceivedCounts(Component);
+            Clip = Uncapped(*Clip, Received ? std::optional{ Received->Clip } : std::nullopt);
+            Reserve = Uncapped(*Reserve, Received ? std::optional{ Received->Reserve } : std::nullopt);
+
             const int Capacity = Weapon && Weapon->Instance ? Weapon->Instance->ammoCapacity : 0;
             const bool Chambered = Capacity > 0 && *Clip > Capacity;
             const Counts NewCounts{ .Clip = Chambered ? *Clip - 1 : *Clip, .Reserve = *Reserve, .Chambered = Chambered };

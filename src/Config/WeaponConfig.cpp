@@ -83,6 +83,7 @@ namespace
         std::optional<std::string>     Plugin;
         std::optional<std::string>     Keyword;
         std::optional<std::string>     Weapon;
+        std::optional<std::string>     FormList;
         FeatureValue<LoopOptions>      LoopedReload;
         FeatureValue<SprintOptions>    SprintTransitions;
         std::optional<bool>            SightedReload;
@@ -104,6 +105,7 @@ namespace
         std::optional<std::string> Plugin;
         std::optional<std::string> Keyword;
         std::optional<std::string> Weapon;
+        std::optional<std::string> FormList;
         std::vector<std::string>   Exclude;
     };
 
@@ -174,7 +176,8 @@ template <>
 struct glz::meta<WeaponEntry>
 {
     using T = WeaponEntry;
-    static constexpr auto value = object("plugin", &T::Plugin, "keyword", &T::Keyword, "weapon", &T::Weapon, "loopedReload", &T::LoopedReload,
+    static constexpr auto value = object("plugin", &T::Plugin, "keyword", &T::Keyword, "weapon", &T::Weapon, "formList", &T::FormList,
+        "loopedReload", &T::LoopedReload,
         "sprintTransitions", &T::SprintTransitions, "sightedReload", &T::SightedReload, "tacticalReload", &T::TacticalReload,
         "inspect", &T::Inspect, "ammoCheck", &T::AmmoCheck, "specialAttack", &T::SpecialAttack, "slideLock", &T::SlideLock,
         "fireModeSwitch", &T::FireModeSwitch);
@@ -191,7 +194,8 @@ template <>
 struct glz::meta<ExclusionEntry>
 {
     using T = ExclusionEntry;
-    static constexpr auto value = object("plugin", &T::Plugin, "keyword", &T::Keyword, "weapon", &T::Weapon, "exclude", &T::Exclude);
+    static constexpr auto value = object("plugin", &T::Plugin, "keyword", &T::Keyword, "weapon", &T::Weapon, "formList", &T::FormList,
+        "exclude", &T::Exclude);
 };
 
 template <>
@@ -235,16 +239,94 @@ namespace
     using WeaponConfig::SprintRule;
     using WeaponConfig::TacticalRule;
 
+    template <class Visitor>
+    bool AnyListForm(const RE::BGSListForm& List, Visitor&& Visit)
+    {
+        for (const auto Form : List.arrayOfForms)
+        {
+            if (Form && Visit(*Form))
+                return true;
+        }
+
+        if (List.scriptAddedTempForms)
+        {
+            for (const auto AddedFormID : *List.scriptAddedTempForms)
+            {
+                const auto Form = RE::TESForm::GetFormByID(AddedFormID);
+
+                if (Form && Visit(*Form))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    [[nodiscard]] bool ListHasWeapon(const RE::BGSListForm& List, const RE::TESObjectWEAP* Base)
+    {
+        return AnyListForm(List, [&](const RE::TESForm& Form) { return &Form == Base; });
+    }
+
+    [[nodiscard]] bool ListHasKeywordOf(const RE::BGSListForm& List, RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
+    {
+        return AnyListForm(List, [&](const RE::TESForm& Form)
+        {
+            const auto Keyword = Form.As<RE::BGSKeyword>();
+
+            return Keyword && Base->HasKeyword(Keyword, Instance);
+        });
+    }
+
     template <class Rule>
     struct RuleList
     {
         std::vector<std::pair<const RE::BGSKeyword*, Rule>>    Keywords;
         std::vector<std::pair<const RE::TESObjectWEAP*, Rule>> Weapons;
+        std::vector<std::pair<const RE::BGSListForm*, Rule>>   FormLists;
 
         void clear()
         {
             Keywords.clear();
             Weapons.clear();
+            FormLists.clear();
+        }
+
+        [[nodiscard]] std::size_t size() const
+        {
+            return Keywords.size() + Weapons.size() + FormLists.size();
+        }
+
+        [[nodiscard]] std::optional<Rule> MatchWeapon(const RE::TESObjectWEAP* Base) const
+        {
+            for (const auto& [Weapon, WeaponRule] : Weapons)
+            {
+                if (Weapon == Base)
+                    return WeaponRule;
+            }
+
+            for (const auto& [List, ListRule] : FormLists)
+            {
+                if (ListHasWeapon(*List, Base))
+                    return ListRule;
+            }
+
+            return std::nullopt;
+        }
+
+        template <class Visitor>
+        void VisitKeywordMatches(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance, Visitor&& Visit) const
+        {
+            for (const auto& [Keyword, KeywordRule] : Keywords)
+            {
+                if (Base->HasKeyword(Keyword, Instance) && Visit(KeywordRule))
+                    return;
+            }
+
+            for (const auto& [List, ListRule] : FormLists)
+            {
+                if (ListHasKeywordOf(*List, Base, Instance) && Visit(ListRule))
+                    return;
+            }
         }
 
         [[nodiscard]] std::optional<Rule> Match(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance) const
@@ -252,19 +334,18 @@ namespace
             if (!Base)
                 return std::nullopt;
 
-            for (const auto& [Weapon, WeaponRule] : Weapons)
-            {
-                if (Weapon == Base)
-                    return WeaponRule;
-            }
+            if (auto WeaponRule = MatchWeapon(Base))
+                return WeaponRule;
 
-            for (const auto& [Keyword, KeywordRule] : Keywords)
-            {
-                if (Base->HasKeyword(Keyword, Instance))
-                    return KeywordRule;
-            }
+            std::optional<Rule> KeywordRule;
 
-            return std::nullopt;
+            VisitKeywordMatches(Base, Instance, [&](const Rule& Found)
+            {
+                KeywordRule = Found;
+                return true;
+            });
+
+            return KeywordRule;
         }
     };
 
@@ -394,6 +475,74 @@ namespace
         }
 
         return LookupFormID<RE::TESObjectWEAP>(FormEntry.Plugin, ID, "weapon", Where);
+    }
+
+    template <class Entry>
+    [[nodiscard]] const RE::BGSListForm* FindFormList(const Entry& FormEntry, std::string_view Where)
+    {
+        const std::string& ID = *FormEntry.FormList;
+
+        if (!IsFormID(ID))
+        {
+            REX::WARN("  {}: form list '{}' needs a FormID starting with \"0x\": the game drops form list editor IDs", Where, ID);
+            return nullptr;
+        }
+
+        const auto List = LookupFormID<RE::BGSListForm>(FormEntry.Plugin, ID, "form list", Where);
+
+        if (!List)
+            return nullptr;
+
+        std::size_t Weapons = 0;
+        std::size_t Keywords = 0;
+        std::size_t Ignored = 0;
+
+        AnyListForm(*List, [&](const RE::TESForm& Form)
+        {
+            if (Form.Is<RE::TESObjectWEAP>())
+                ++Weapons;
+            else if (Form.Is<RE::BGSKeyword>())
+                ++Keywords;
+            else
+                ++Ignored;
+
+            return false;
+        });
+
+        REX::INFO("  {}: form list {:08X} holds {} weapon(s) and {} keyword(s){}", Where, List->GetFormID(), Weapons, Keywords,
+            Ignored ? std::format("; {} other item(s) ignored", Ignored) : std::string{});
+
+        return List;
+    }
+
+    template <class Entry>
+    [[nodiscard]] bool HasOneForm(const Entry& FormEntry, std::string_view Where)
+    {
+        const int Count = FormEntry.Keyword.has_value() + FormEntry.Weapon.has_value() + FormEntry.FormList.has_value();
+
+        if (Count != 1)
+            REX::WARN("  {}: needs one of \"keyword\", \"weapon\" or \"formList\"", Where);
+
+        return Count == 1;
+    }
+
+    template <class Entry, class Visitor>
+    void VisitEntryForm(const Entry& FormEntry, std::string_view Where, Visitor&& Visit)
+    {
+        if (FormEntry.Keyword)
+        {
+            if (const auto Keyword = FindKeyword(FormEntry, Where))
+                Visit(Keyword);
+        }
+        else if (FormEntry.Weapon)
+        {
+            if (const auto Weapon = FindWeapon(FormEntry, Where))
+                Visit(Weapon);
+        }
+        else if (const auto List = FindFormList(FormEntry, Where))
+        {
+            Visit(List);
+        }
     }
 
     [[nodiscard]] std::optional<LoopRule> MakeRule(const LoopOptions& Options, std::string_view Where)
@@ -624,6 +773,8 @@ namespace
     {
         if constexpr (std::is_same_v<T, RE::BGSKeyword>)
             AddRule(List.Keywords, Form, NewRule, "keyword", Where);
+        else if constexpr (std::is_same_v<T, RE::BGSListForm>)
+            AddRule(List.FormLists, Form, NewRule, "form list", Where);
         else
             AddRule(List.Weapons, Form, NewRule, "weapon", Where);
     }
@@ -690,11 +841,8 @@ namespace
 
     void AddEntry(const WeaponEntry& Entry, std::string_view Where)
     {
-        if (Entry.Keyword.has_value() == Entry.Weapon.has_value())
-        {
-            REX::WARN("  {}: needs either \"keyword\" or \"weapon\"", Where);
+        if (!HasOneForm(Entry, Where))
             return;
-        }
 
         const bool TurnsAnyFeatureOn = Resolve(Entry.LoopedReload) || Resolve(Entry.SprintTransitions) || Entry.SightedReload.value_or(false) ||
                                        Resolve(Entry.TacticalReload) || Resolve(Entry.Inspect) || Resolve(Entry.AmmoCheck) ||
@@ -712,24 +860,13 @@ namespace
             return;
         }
 
-        if (Entry.Keyword)
-        {
-            if (const auto Keyword = FindKeyword(Entry, Where))
-                AddFeatures(Entry, Keyword, Where);
-        }
-        else if (const auto Weapon = FindWeapon(Entry, Where))
-        {
-            AddFeatures(Entry, Weapon, Where);
-        }
+        VisitEntryForm(Entry, Where, [&](const auto* Form) { AddFeatures(Entry, Form, Where); });
     }
 
     void AddExclusion(const ExclusionEntry& Entry, std::string_view Where)
     {
-        if (Entry.Keyword.has_value() == Entry.Weapon.has_value())
-        {
-            REX::WARN("  {}: needs either \"keyword\" or \"weapon\"", Where);
+        if (!HasOneForm(Entry, Where))
             return;
-        }
 
         std::vector<Feature> Features;
 
@@ -768,15 +905,7 @@ namespace
             }
         };
 
-        if (Entry.Keyword)
-        {
-            if (const auto Keyword = FindKeyword(Entry, Where))
-                Add(Keyword);
-        }
-        else if (const auto Weapon = FindWeapon(Entry, Where))
-        {
-            Add(Weapon);
-        }
+        VisitEntryForm(Entry, Where, Add);
     }
 
     [[nodiscard]] std::optional<std::string> ReadText(const std::filesystem::path& Path)
@@ -887,9 +1016,15 @@ namespace WeaponConfig
         std::size_t ExclusionCount = 0;
 
         for (const auto& List : ExclusionRules)
-            ExclusionCount += List.Keywords.size() + List.Weapons.size();
+            ExclusionCount += List.size();
 
         REX::INFO("Exclusions: {} from {} file(s)", ExclusionCount, ExclusionFiles.size());
+
+        const std::size_t FormListCount = LoopRules.FormLists.size() + SprintRules.FormLists.size() + SightedRules.FormLists.size() +
+                                          TacticalRules.FormLists.size() + InspectRules.FormLists.size() + AmmoCheckRules.FormLists.size() +
+                                          SpecialAttackRules.FormLists.size() + SlideLockRules.FormLists.size() + FireModeRules.FormLists.size();
+
+        REX::INFO("Form lists: {} feature(s) turned on by a form list", FormListCount);
 
         REX::INFO("Looped reload: {} keyword(s) and {} weapon(s); sprint transitions: {} keyword(s) and {} weapon(s); "
                   "sighted reload: {} keyword(s) and {} weapon(s); tactical reload: {} keyword(s) and {} weapon(s); inspect / ammo check "
@@ -897,8 +1032,7 @@ namespace WeaponConfig
                   "weapon(s); from {} file(s)",
             LoopRules.Keywords.size(), LoopRules.Weapons.size(), SprintRules.Keywords.size(), SprintRules.Weapons.size(),
             SightedRules.Keywords.size(), SightedRules.Weapons.size(), TacticalRules.Keywords.size(), TacticalRules.Weapons.size(),
-            InspectRules.Keywords.size() + InspectRules.Weapons.size(), AmmoCheckRules.Keywords.size() + AmmoCheckRules.Weapons.size(),
-            SpecialAttackRules.Keywords.size() + SpecialAttackRules.Weapons.size(), SlideLockRules.Keywords.size(), SlideLockRules.Weapons.size(),
+            InspectRules.size(), AmmoCheckRules.size(), SpecialAttackRules.size(), SlideLockRules.Keywords.size(), SlideLockRules.Weapons.size(),
             FireModeRules.Keywords.size(), FireModeRules.Weapons.size(), Files.size());
     }
 
@@ -937,23 +1071,18 @@ namespace WeaponConfig
         if (!Base || IsExcluded(Feature::TacticalReload, Base, Instance))
             return std::nullopt;
 
-        for (const auto& [Weapon, WeaponRule] : TacticalRules.Weapons)
-        {
-            if (Weapon == Base)
-                return WeaponRule;
-        }
+        if (auto WeaponRule = TacticalRules.MatchWeapon(Base))
+            return WeaponRule;
 
         std::optional<TacticalRule> MergedFromKeywords;
 
-        for (const auto& [Keyword, KeywordRule] : TacticalRules.Keywords)
+        TacticalRules.VisitKeywordMatches(Base, Instance, [&](const TacticalRule& KeywordRule)
         {
-            if (Base->HasKeyword(Keyword, Instance))
-            {
-                MergedFromKeywords = MergedFromKeywords ? TacticalRule{ .FirstPerson = MergedFromKeywords->FirstPerson || KeywordRule.FirstPerson,
-                                                              .ThirdPerson = MergedFromKeywords->ThirdPerson || KeywordRule.ThirdPerson } :
-                                                          KeywordRule;
-            }
-        }
+            MergedFromKeywords = MergedFromKeywords ? TacticalRule{ .FirstPerson = MergedFromKeywords->FirstPerson || KeywordRule.FirstPerson,
+                                                          .ThirdPerson = MergedFromKeywords->ThirdPerson || KeywordRule.ThirdPerson } :
+                                                      KeywordRule;
+            return false;
+        });
 
         return MergedFromKeywords;
     }
