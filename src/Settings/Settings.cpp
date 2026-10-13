@@ -32,6 +32,7 @@ namespace
     REX::TIniSetting<bool> AimWobbleNoScopeSetting{ "AimWobble", "bNoScope", false };
     REX::TIniSetting<bool> HoldBlockSetting{ "HoldBlock", "bEnabled", false };
     REX::TIniSetting<bool> FireWhileSprintingSetting{ "FireWhileSprinting", "bEnabled", false };
+    REX::TIniSetting<bool> SightedFireJiggleSetting{ "SightedFireJiggle", "bEnabled", true };
 
     constexpr auto BaseFile = "Data/F4SE/Plugins/MWB.ini";
     constexpr auto CustomFile = "Data/F4SE/Plugins/MWB_Custom.ini";
@@ -59,6 +60,7 @@ namespace
         McmBool{ "AimWobble", "bNoScope", &AimWobbleNoScopeSetting },
         McmBool{ "HoldBlock", "bEnabled", &HoldBlockSetting },
         McmBool{ "FireWhileSprinting", "bEnabled", &FireWhileSprintingSetting },
+        McmBool{ "SightedFireJiggle", "bEnabled", &SightedFireJiggleSetting },
     };
 
     bool FireModeSwitchAtStartup{ true };
@@ -83,10 +85,11 @@ namespace
     void LogValues(std::string_view When)
     {
         REX::INFO("Settings ({}): verboseLog={}, bulletInChamber={}, dropUnspentAmmo={}, manualReload={}, slideLock={}, fireModeSwitch={}, weaponHUD={}, "
-                  "thirdPersonSprintFOV={}, aimWobble(vanillaScopes={}, 3DScopes={}, noScope={}), holdBlock={}, fireWhileSprinting={}",
+                  "thirdPersonSprintFOV={}, aimWobble(vanillaScopes={}, 3DScopes={}, noScope={}), holdBlock={}, fireWhileSprinting={}, sightedFireJiggle={}",
             When, VerboseLogSetting.GetValue(), BulletInChamberSetting.GetValue(), DropUnspentAmmoSetting.GetValue(), ManualReloadSetting.GetValue(),
             SlideLockSetting.GetValue(), FireModeSwitchSetting.GetValue(), WeaponHUDSetting.GetValue(), ThirdPersonSprintFOVSetting.GetValue(),
-            AimWobbleVanillaScopesSetting.GetValue(), AimWobble3DScopesSetting.GetValue(), AimWobbleNoScopeSetting.GetValue(), HoldBlockSetting.GetValue(), FireWhileSprintingSetting.GetValue());
+            AimWobbleVanillaScopesSetting.GetValue(), AimWobble3DScopesSetting.GetValue(), AimWobbleNoScopeSetting.GetValue(), HoldBlockSetting.GetValue(), FireWhileSprintingSetting.GetValue(),
+            SightedFireJiggleSetting.GetValue());
     }
 }
 
@@ -176,5 +179,10 @@ namespace Settings
     bool FireWhileSprinting()
     {
         return FireWhileSprintingSetting.GetValue();
+    }
+
+    bool SightedFireJiggle()
+    {
+        return SightedFireJiggleSetting.GetValue();
     }
 }

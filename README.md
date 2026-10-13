@@ -15,6 +15,8 @@ This repository holds the source code of the plugin (`MWB.dll`) as released on N
 * Weapon HUD module, bullet in the chamber, drop unspent ammo on reload and manual reload.
 * Hold to block for melee and fists, and firing while sprinting in first person.
 * Aim sway and hold breath, the game's own, for regular scopes, 3D scopes and sights without a scope, each with its own setting.
+* Aim down sight in and out animations timed to the weapon's sight speed, and a setting for the sighted fire jiggle.
+* Animation clips missing from the AnimTextData still load.
 
 ## Supported Runtimes
 
@@ -78,17 +80,17 @@ src/
   Actions/     first person only actions and weapon actions allowed per weapon
   Arm/         arm-only animations: weapon lock and arm space
   Config/      the per weapon JSON files and the exclusions
-  Core/        runtime check, F4SE messages and the equipped weapon
+  Core/        runtime check, F4SE messages, the equipped weapon and the gun state
   Fire/        MWB_WeaponFireAmmo annotation
   HUD/         weapon HUD module and ammo check readout
-  Hooks/       animation events, clip generators, graph generate, input, queued events, animation update
+  Hooks/       animation events, graph notify, clip generators, graph generate, input, queued events, subgraph animations, animation update
   Magic/       MWB_UseAlchemyItem and MWB_CastSpell annotations
   Melee/       hold to block
   Papyrus/     native functions of the MWB script
   Reload/      looped, sighted and tactical reload, bullet in the chamber, drop unspent ammo, manual reload, bolt charge resync
   Settings/    MWB.ini, MWB_Custom.ini and the MCM settings
-  Sprint/      sprint transitions, third person sprint camera, first person sprint speed and firing while sprinting
-  Weapon/      fire mode switch and pose, slide lock, weapon bones and scope sway
+  Sprint/      sprint transitions, third person sprint camera and firing while sprinting
+  Weapon/      fire mode switch and pose, slide lock, weapon bones, scope sway, aim down sight and sighted fire jiggle
 ```
 
 ## License

@@ -47,4 +47,6 @@ namespace Settings
     [[nodiscard]] bool HoldBlock();
 
     [[nodiscard]] bool FireWhileSprinting();
+
+    [[nodiscard]] bool SightedFireJiggle();
 }

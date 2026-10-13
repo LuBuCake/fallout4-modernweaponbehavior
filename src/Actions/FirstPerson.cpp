@@ -14,6 +14,7 @@
 
 #include "FirstPerson.h"
 #include "Core/EquippedWeapon.h"
+#include "Core/GunState.h"
 
 namespace
 {
@@ -35,7 +36,7 @@ namespace FirstPerson
         if (!Core::GetEquippedWeapon(Player))
             return "no drawn weapon"s;
 
-        switch (Player->gunState)
+        switch (Core::GetGunState(Player))
         {
             case RE::GUN_STATE::kReloading:
                 return "reloading"s;

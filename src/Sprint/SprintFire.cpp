@@ -14,6 +14,7 @@
 
 #include "SprintFire.h"
 #include "Core/EquippedWeapon.h"
+#include "Core/GunState.h"
 #include "Settings/Settings.h"
 
 namespace
@@ -302,7 +303,8 @@ namespace
         if (!RetryPending)
             return;
 
-        const bool Firing = Player->gunState == RE::GUN_STATE::kFire || Player->gunState == RE::GUN_STATE::kFireSighted;
+        const auto State = Core::GetGunState(Player);
+        const bool Firing = State == RE::GUN_STATE::kFire || State == RE::GUN_STATE::kFireSighted;
 
         if (FireStateEntered || Firing || SinceResume >= RetryWindow || !Settings::FireWhileSprinting() || !InFirstPerson(Player) || !HasGunOut(Player))
         {
@@ -509,7 +511,7 @@ namespace SprintFire
             return;
         }
 
-        switch (Player->gunState)
+        switch (Core::GetGunState(Player))
         {
             case RE::GUN_STATE::kFire:
             case RE::GUN_STATE::kFireSighted:

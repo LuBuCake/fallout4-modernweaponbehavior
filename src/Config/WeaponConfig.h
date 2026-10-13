@@ -29,6 +29,7 @@ namespace WeaponConfig
         FireModeSwitch,
         BulletInChamber,
         DropUnspentAmmo,
+        AimDownSight,
 
         Count
     };
@@ -97,6 +98,7 @@ namespace WeaponConfig
     [[nodiscard]] std::optional<LoopRule>      MatchLoop(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
     [[nodiscard]] std::optional<SprintRule>    MatchSprint(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
     [[nodiscard]] bool                         MatchSighted(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
+    [[nodiscard]] bool                         MatchAimDownSight(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
     [[nodiscard]] std::optional<TacticalRule>  MatchTactical(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
     [[nodiscard]] std::optional<FireModeRule>  MatchFireMode(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
     [[nodiscard]] std::optional<SlideLockRule> MatchSlideLock(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);

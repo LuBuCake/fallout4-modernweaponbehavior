@@ -16,13 +16,13 @@
 
 namespace HoldBlock
 {
+    void Install();
+
     void SetBlockButton(bool Down);
 
     void OnEventSent(const RE::BSFixedString& Event, bool Accepted);
 
     void Tick(RE::PlayerCharacter* Player, float Delta);
-
-    [[nodiscard]] float SpeedScale();
 
     void Reset();
 }

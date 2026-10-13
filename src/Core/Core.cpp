@@ -28,6 +28,7 @@
 #include "Hooks/InputHandler.h"
 #include "Hooks/NotifyAnimationGraphHook.h"
 #include "Hooks/QueuedEventHook.h"
+#include "Hooks/SubgraphAnimationHook.h"
 #include "Hooks/UpdateAnimationHook.h"
 #include "Melee/HoldBlock.h"
 #include "Papyrus/Papyrus.h"
@@ -40,7 +41,7 @@
 #include "Reload/TacticalReload.h"
 #include "Settings/Settings.h"
 #include "Sprint/SprintFire.h"
-#include "Sprint/SprintSpeed.h"
+#include "Weapon/AimDownSight.h"
 #include "Weapon/FireMode.h"
 #include "Weapon/FireModePose.h"
 #include "Weapon/ScopeSway.h"
@@ -83,6 +84,7 @@ namespace Core
         Papyrus::Register();
         AmmoFire::InstallEditorIDHook();
         MagicAnnotations::InstallEditorIDHooks();
+        Hooks::InstallSubgraphAnimationHook();
     }
 
     void GameDataReady()
@@ -110,7 +112,7 @@ namespace Core
         BulletInChamber::Install();
         ManualReload::Install();
         ScopeSway::Install();
-        SprintSpeed::Install();
+        HoldBlock::Install();
         SprintFire::Install();
         WeaponHUD::Install();
         Settings::InstallMenuWatcher();
@@ -122,6 +124,7 @@ namespace Core
         Hooks::ForgetClips();
         MagicAnnotations::Reset();
         SightedReload::Reset();
+        AimDownSight::Reset();
         ArmAnimations::Reset();
         ArmSpace::Reset();
         SlideLock::Reset();

@@ -18,7 +18,13 @@
 namespace
 {
     constexpr float MinimumHold = 0.3f;
-    constexpr float HoldingSpeedScale = 0.7f;
+    constexpr float HoldingSpeedScale = 0.5f;
+
+    constexpr std::size_t MaxSpeedsSlot = 0x0A;
+    constexpr std::ptrdiff_t MovementStateOffset = 0x128;
+
+    constexpr std::size_t TranslationRows = 4;
+    constexpr std::size_t Columns = 4;
 
     std::atomic<bool>    ButtonDown{ false };
     std::atomic<bool>    Holding{ false };
@@ -84,10 +90,58 @@ namespace
         if (Current > *ActionPointsCap)
             Player->ModActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, *Value, *ActionPointsCap - Current);
     }
+
+    struct GetCurrentMaxSpeeds
+    {
+        static bool Thunk(const RE::IMovementState* This, RE::Movement::MaxSpeeds& Speeds)
+        {
+            const bool Result = Original(This, Speeds);
+
+            if (Result && Holding)
+            {
+                for (std::size_t Row = 0; Row < TranslationRows; ++Row)
+                {
+                    for (std::size_t Column = 0; Column < Columns; ++Column)
+                        Speeds.speeds[Row][Column] *= HoldingSpeedScale;
+                }
+            }
+
+            return Result;
+        }
+
+        inline static REL::Relocation<decltype(Thunk)> Original;
+    };
 }
 
 namespace HoldBlock
 {
+    void Install()
+    {
+        const auto Player = RE::PlayerCharacter::GetSingleton();
+
+        if (!Player)
+        {
+            REX::ERROR("Hold block: no player. Blocking will not slow the player down.");
+            return;
+        }
+
+        const auto Live = *reinterpret_cast<std::uintptr_t*>(reinterpret_cast<std::uintptr_t>(Player) + MovementStateOffset);
+
+        for (const auto& ID : RE::VTABLE::PlayerCharacter)
+        {
+            REL::Relocation<std::uintptr_t> Vtable{ ID };
+
+            if (Vtable.address() == Live)
+            {
+                GetCurrentMaxSpeeds::Original = Vtable.write_vfunc(MaxSpeedsSlot, GetCurrentMaxSpeeds::Thunk);
+                REX::INFO("Hold block speed hook installed");
+                return;
+            }
+        }
+
+        REX::ERROR("Hold block: the player's movement state vtable ({:X}) is not a PlayerCharacter one. Blocking will not slow the player down.", Live);
+    }
+
     void SetBlockButton(bool Down)
     {
         ButtonDown = Down;
@@ -143,11 +197,6 @@ namespace HoldBlock
 
         if (Settings::VerboseLog())
             REX::INFO("Hold block: block button released, blockStop {}", Accepted ? "accepted" : "refused (the block was already over)");
-    }
-
-    float SpeedScale()
-    {
-        return Holding ? HoldingSpeedScale : 1.0f;
     }
 
     void Reset()

@@ -56,7 +56,7 @@ F4SE_PLUGIN_QUERY(const F4SE::QueryInterface* F4SEInterface, F4SE::PluginInfo* I
 
 F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* F4SEInterface)
 {
-    F4SE::Init(F4SEInterface, { .logName = "MWB", .trampoline = true, .trampolineSize = 16 * 16 });
+    F4SE::Init(F4SEInterface, { .logName = "MWB", .trampoline = true, .trampolineSize = 16 * 24 });
 
     if (!Core::RuntimeSupported())
         return true;

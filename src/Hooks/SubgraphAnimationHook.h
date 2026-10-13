@@ -14,9 +14,7 @@
 
 #pragma once
 
-namespace SprintSpeed
+namespace Hooks
 {
-    void Install();
-
-    void Tick(RE::PlayerCharacter* Player);
+    void InstallSubgraphAnimationHook();
 }

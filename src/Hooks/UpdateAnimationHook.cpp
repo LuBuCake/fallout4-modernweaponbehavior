@@ -25,11 +25,12 @@
 #include "Settings/Settings.h"
 #include "Sprint/SprintCamera.h"
 #include "Sprint/SprintFire.h"
-#include "Sprint/SprintSpeed.h"
 #include "Sprint/SprintTransitions.h"
 #include "Weapon/FireMode.h"
+#include "Weapon/AimDownSight.h"
 #include "Weapon/FireModePose.h"
 #include "Weapon/ScopeSway.h"
+#include "Weapon/SightedFireJiggle.h"
 #include "Weapon/SlideLock.h"
 #include "Weapon/WeaponBones.h"
 
@@ -48,9 +49,10 @@ namespace
             Reload::Tick(Delta);
             Sprint::Tick(This, Delta);
             SprintCamera::Tick(This);
-            SprintSpeed::Tick(This);
             BoltChargeResync::Tick(This);
             SightedReload::Tick(This, Delta);
+            AimDownSight::Tick(This);
+            SightedFireJiggle::Tick(This);
             DropUnspentAmmo::Tick(This);
             FireMode::Tick(This);
             WeaponBones::BeginFrame(This);

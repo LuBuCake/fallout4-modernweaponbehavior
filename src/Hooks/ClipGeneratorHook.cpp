@@ -15,6 +15,7 @@
 #include "ClipGeneratorHook.h"
 #include "Magic/MagicAnnotations.h"
 #include "Arm/ArmSpace.h"
+#include "Weapon/AimDownSight.h"
 #include "Settings/Settings.h"
 
 namespace
@@ -134,6 +135,7 @@ namespace
                 return;
 
             ArmSpace::OnClipActivated(Clip, Character);
+            AimDownSight::OnClipActivated(Clip);
 
             const std::scoped_lock Guard{ Lock };
             Untrack(Clip);

@@ -93,6 +93,7 @@ namespace
         std::optional<bool>            SpecialAttack;
         FeatureValue<SlideLockOptions> SlideLock;
         FeatureValue<FireModeOptions>  FireModeSwitch;
+        std::optional<bool>            AimDownSight;
     };
 
     struct ConfigFile
@@ -180,7 +181,7 @@ struct glz::meta<WeaponEntry>
         "loopedReload", &T::LoopedReload,
         "sprintTransitions", &T::SprintTransitions, "sightedReload", &T::SightedReload, "tacticalReload", &T::TacticalReload,
         "inspect", &T::Inspect, "ammoCheck", &T::AmmoCheck, "specialAttack", &T::SpecialAttack, "slideLock", &T::SlideLock,
-        "fireModeSwitch", &T::FireModeSwitch);
+        "fireModeSwitch", &T::FireModeSwitch, "aimDownSight", &T::AimDownSight);
 };
 
 template <>
@@ -212,7 +213,7 @@ namespace
 
     using WeaponConfig::Feature;
 
-    constexpr std::array<std::pair<std::string_view, Feature>, 11> FeatureNames{ {
+    constexpr std::array<std::pair<std::string_view, Feature>, 12> FeatureNames{ {
         { "loopedReload"sv, Feature::LoopedReload },
         { "sprintTransitions"sv, Feature::SprintTransitions },
         { "sightedReload"sv, Feature::SightedReload },
@@ -224,6 +225,7 @@ namespace
         { "fireModeSwitch"sv, Feature::FireModeSwitch },
         { "bulletInChamber"sv, Feature::BulletInChamber },
         { "dropUnspentAmmo"sv, Feature::DropUnspentAmmo },
+        { "aimDownSight"sv, Feature::AimDownSight },
     } };
 
     constexpr glz::opts ReadOptions{ .comments = true };
@@ -358,6 +360,7 @@ namespace
     RuleList<SightedRule>   SpecialAttackRules;
     RuleList<SlideLockRule> SlideLockRules;
     RuleList<FireModeRule>  FireModeRules;
+    RuleList<SightedRule>   AimDownSightRules;
 
     std::array<RuleList<SightedRule>, static_cast<std::size_t>(Feature::Count)> ExclusionRules;
 
@@ -837,6 +840,9 @@ namespace
             if (const auto Rule = MakeRule(*Options, FeatureWhere))
                 AddRule(FireModeRules, Form, *Rule, FeatureWhere);
         }
+
+        if (Entry.AimDownSight.value_or(false))
+            AddRule(AimDownSightRules, Form, SightedRule{}, std::format("{} aimDownSight", Where));
     }
 
     void AddEntry(const WeaponEntry& Entry, std::string_view Where)
@@ -846,7 +852,8 @@ namespace
 
         const bool TurnsAnyFeatureOn = Resolve(Entry.LoopedReload) || Resolve(Entry.SprintTransitions) || Entry.SightedReload.value_or(false) ||
                                        Resolve(Entry.TacticalReload) || Resolve(Entry.Inspect) || Resolve(Entry.AmmoCheck) ||
-                                       Entry.SpecialAttack.value_or(false) || Resolve(Entry.SlideLock) || Resolve(Entry.FireModeSwitch);
+                                       Entry.SpecialAttack.value_or(false) || Resolve(Entry.SlideLock) || Resolve(Entry.FireModeSwitch) ||
+                                       Entry.AimDownSight.value_or(false);
 
         if (!TurnsAnyFeatureOn)
         {
@@ -991,6 +998,7 @@ namespace WeaponConfig
         SpecialAttackRules.clear();
         SlideLockRules.clear();
         FireModeRules.clear();
+        AimDownSightRules.clear();
 
         for (auto& List : ExclusionRules)
             List.clear();
@@ -1022,18 +1030,20 @@ namespace WeaponConfig
 
         const std::size_t FormListCount = LoopRules.FormLists.size() + SprintRules.FormLists.size() + SightedRules.FormLists.size() +
                                           TacticalRules.FormLists.size() + InspectRules.FormLists.size() + AmmoCheckRules.FormLists.size() +
-                                          SpecialAttackRules.FormLists.size() + SlideLockRules.FormLists.size() + FireModeRules.FormLists.size();
+                                          SpecialAttackRules.FormLists.size() + SlideLockRules.FormLists.size() + FireModeRules.FormLists.size() +
+                                          AimDownSightRules.FormLists.size();
 
         REX::INFO("Form lists: {} feature(s) turned on by a form list", FormListCount);
 
         REX::INFO("Looped reload: {} keyword(s) and {} weapon(s); sprint transitions: {} keyword(s) and {} weapon(s); "
                   "sighted reload: {} keyword(s) and {} weapon(s); tactical reload: {} keyword(s) and {} weapon(s); inspect / ammo check "
                   "/ special attack: {} / {} / {} entries; slide lock: {} keyword(s) and {} weapon(s); fire mode switch: {} keyword(s) and {} "
-                  "weapon(s); from {} file(s)",
+                  "weapon(s); aim down sight clips: {} keyword(s) and {} weapon(s); from {} file(s)",
             LoopRules.Keywords.size(), LoopRules.Weapons.size(), SprintRules.Keywords.size(), SprintRules.Weapons.size(),
             SightedRules.Keywords.size(), SightedRules.Weapons.size(), TacticalRules.Keywords.size(), TacticalRules.Weapons.size(),
             InspectRules.size(), AmmoCheckRules.size(), SpecialAttackRules.size(), SlideLockRules.Keywords.size(), SlideLockRules.Weapons.size(),
-            FireModeRules.Keywords.size(), FireModeRules.Weapons.size(), Files.size());
+            FireModeRules.Keywords.size(), FireModeRules.Weapons.size(), AimDownSightRules.Keywords.size(), AimDownSightRules.Weapons.size(),
+            Files.size());
     }
 
     std::optional<LoopRule> MatchLoop(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
@@ -1049,6 +1059,11 @@ namespace WeaponConfig
     bool MatchSighted(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
     {
         return MatchUnlessExcluded(SightedRules, Feature::SightedReload, Base, Instance).has_value();
+    }
+
+    bool MatchAimDownSight(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
+    {
+        return MatchUnlessExcluded(AimDownSightRules, Feature::AimDownSight, Base, Instance).has_value();
     }
 
     std::optional<ActionRule> MatchAction(WeaponAction Action, RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)

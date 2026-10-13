@@ -14,6 +14,7 @@
 
 #include "ScopeSway.h"
 #include "Core/EquippedWeapon.h"
+#include "Core/GunState.h"
 #include "Settings/Settings.h"
 
 namespace
@@ -37,6 +38,7 @@ namespace
     constexpr std::array STSPlugins{ "3dscopes.esp"sv, "3dscopes-goty.esp"sv, "3dscopes-replacer.esp"sv };
 
     constexpr float SteadyEventWindow = 0.25f;
+    constexpr float SteadyOutOfSightsWindow = 1.5f;
 
     enum class Sight : std::uint8_t
     {
@@ -56,6 +58,7 @@ namespace
     std::atomic<bool> SteadyReleased{ false };
 
     bool Holding{ false };
+    float OutOfSightsFor{ 0.0f };
     float SteadyEventFor{ 0.0f };
     bool STSChecked{ false };
 
@@ -152,7 +155,7 @@ namespace
 
     [[nodiscard]] bool Aiming(RE::PlayerCharacter* Player)
     {
-        const auto State = Player->gunState;
+        const auto State = Core::GetGunState(Player);
 
         return State == RE::GUN_STATE::kSighted || State == RE::GUN_STATE::kFireSighted;
     }
@@ -238,11 +241,23 @@ namespace
         const bool Pressed = SteadyPressed.exchange(false);
         const bool Released = SteadyReleased.exchange(false);
 
-        if (Holding && !CanSteady)
-            StopHolding(Player, false, "out of the sights");
-
         if (Holding && Released)
             StopHolding(Player, true, "key up");
+
+        if (Holding && !CanSteady)
+        {
+            if (Settings::VerboseLog() && OutOfSightsFor == 0.0f)
+                REX::INFO("Aim sway: breath kept out of the sights (gun state {})", std::to_underlying(Core::GetGunState(Player)));
+
+            OutOfSightsFor += Delta;
+
+            if (OutOfSightsFor >= SteadyOutOfSightsWindow)
+                StopHolding(Player, false, "out of the sights");
+
+            return;
+        }
+
+        OutOfSightsFor = 0.0f;
 
         if (!Holding && Pressed && CanSteady && SteadyHeld)
             StartHolding(Player);
@@ -606,6 +621,7 @@ namespace ScopeSway
             StopHolding(Player, false, "loading a save");
 
         Holding = false;
+        OutOfSightsFor = 0.0f;
         SteadyEventFor = 0.0f;
         STSChecked = false;
         SteadyHeld = false;
