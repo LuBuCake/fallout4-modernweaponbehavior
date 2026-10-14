@@ -23,6 +23,7 @@
 #include "Reload/TacticalReload.h"
 #include "Sprint/SprintFire.h"
 #include "Weapon/FireMode.h"
+#include "Weapon/FullEquip.h"
 #include "Weapon/ScopeSway.h"
 
 namespace
@@ -95,7 +96,9 @@ namespace
             }
 
             SprintFire::OnEventSending(*SentEvent);
+            const auto DrawState = FullEquip::Begin(This, *SentEvent);
             const bool Accepted = Original(This, *SentEvent);
+            FullEquip::End(This, DrawState);
             BoltChargeResync::OnEventSent(*SentEvent, Accepted);
             DropUnspentAmmo::OnEventSent(*SentEvent, Accepted);
             ArmSpace::OnEventSent(*SentEvent, Accepted);

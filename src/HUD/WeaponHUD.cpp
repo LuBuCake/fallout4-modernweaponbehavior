@@ -37,7 +37,6 @@ namespace
     constexpr std::size_t ReceivedAmmoCounts = 0x1C0;
     constexpr std::size_t ReceivedAmmoCountsSet = 0x1C8;
     constexpr std::uint32_t MaxShownAmmoCount = 999;
-    constexpr std::uint32_t NoAmmoCount = 0xFFFFFFFF;
     constexpr std::uint32_t BackgroundEnabledBit = 1u;
     constexpr int MaxShaderChildDepth = 3;
     constexpr std::uint32_t MaxShaderChildren = 64;
@@ -92,6 +91,7 @@ namespace
         std::string LastWidgetDebug;
 
         const RE::TESObjectWEAP* NameBase{ nullptr };
+        std::string NameCustom;
         std::string Name;
 
         const RE::TESAmmo* AmmoNameBase{ nullptr };
@@ -113,6 +113,22 @@ namespace
     ExplosiveState Explosive;
 
     std::atomic<bool> ThrownIsMine{ false };
+
+    constexpr float         CustomNameInterval = 0.5f;
+    constexpr std::uint16_t ManualNameFlag = 1;
+
+    struct CustomNameState
+    {
+        std::mutex               Lock;
+        const RE::TESObjectWEAP* Base{ nullptr };
+        std::string              Name;
+
+        const RE::TESObjectWEAP*               LastBase{ nullptr };
+        const RE::TESObjectWEAP::InstanceData* LastInstance{ nullptr };
+        float                                  CheckIn{ 0.0f };
+    };
+
+    CustomNameState& Custom = *new CustomNameState;
 
     [[nodiscard]] std::optional<Grenades> SeenGrenades()
     {
@@ -205,10 +221,13 @@ namespace
 
     [[nodiscard]] int Uncapped(int Shown, std::optional<std::uint32_t> Received)
     {
-        if (!Received || *Received == NoAmmoCount || *Received <= MaxShownAmmoCount || Shown != static_cast<int>(MaxShownAmmoCount))
+        if (!Received || Shown != static_cast<int>(MaxShownAmmoCount))
             return Shown;
 
-        return static_cast<int>(std::min<std::uint32_t>(*Received, std::numeric_limits<int>::max()));
+        if (static_cast<std::int32_t>(*Received) < 0)
+            return 0;
+
+        return *Received <= MaxShownAmmoCount ? Shown : static_cast<int>(*Received);
     }
 
     void LogWidgetError()
@@ -393,13 +412,60 @@ namespace
 
     [[nodiscard]] std::string WeaponName(const Core::EquippedWeapon& Weapon)
     {
-        if (Weapon.Base != HUD.NameBase)
+        std::string CustomName;
+
+        {
+            const std::scoped_lock Guard{ Custom.Lock };
+
+            if (Custom.Base == Weapon.Base)
+                CustomName = Custom.Name;
+        }
+
+        if (Weapon.Base != HUD.NameBase || CustomName != HUD.NameCustom)
         {
             HUD.NameBase = Weapon.Base;
-            HUD.Name = StripSortingTags(RE::TESFullName::GetFullName(*Weapon.Base));
+            HUD.NameCustom = CustomName;
+            HUD.Name = StripSortingTags(CustomName.empty() ? std::string_view{ RE::TESFullName::GetFullName(*Weapon.Base) } : std::string_view{ CustomName });
         }
 
         return HUD.Name;
+    }
+
+    [[nodiscard]] std::string ReadCustomName(RE::PlayerCharacter* Player, const RE::TESObjectWEAP* Base)
+    {
+        const auto List = Player->inventoryList;
+
+        if (!List || !Base)
+            return {};
+
+        std::string Name;
+        List->rwLock.lock_read();
+
+        for (auto& Item : List->data)
+        {
+            if (Item.object != Base)
+                continue;
+
+            for (auto Stack = Item.stackData.get(); Stack && Name.empty(); Stack = Stack->nextStack.get())
+            {
+                const auto Extra = Stack->IsEquipped() ? Stack->extra.get() : nullptr;
+                const auto Text = Extra ? Extra->GetByType<RE::ExtraTextDisplayData>() : nullptr;
+
+                if (!Text || !(Text->flags & ManualNameFlag) || Text->displayNameText || Text->ownerQuest ||
+                    Text->ownerInstance != RE::ExtraTextDisplayData::DisplayDataType::kCustomName)
+                    continue;
+
+                const std::string_view Full{ Text->displayName.c_str(), Text->displayName.length() };
+                Name = Full.substr(0, Text->customNameLength ? std::min<std::size_t>(Text->customNameLength, Full.size()) : Full.size());
+            }
+
+            if (!Name.empty())
+                break;
+        }
+
+        List->rwLock.unlock_read();
+
+        return Name;
     }
 
     [[nodiscard]] std::string AmmoName(const RE::TESAmmo& Ammo)
@@ -658,6 +724,42 @@ namespace
 
 namespace WeaponHUD
 {
+    void Tick(RE::PlayerCharacter* Player, float Delta)
+    {
+        if (!Player || !Settings::WeaponHUD())
+            return;
+
+        std::optional<Core::EquippedWeapon> Weapon;
+
+        if (!Core::TryGetEquippedWeapon(Player, Weapon))
+            return;
+
+        const auto Base = Weapon ? Weapon->Base : nullptr;
+        const auto Instance = Weapon ? Weapon->Instance : nullptr;
+        const bool Changed = Base != Custom.LastBase || Instance != Custom.LastInstance;
+
+        Custom.CheckIn -= Delta;
+
+        if (!Changed && Custom.CheckIn > 0.0f)
+            return;
+
+        Custom.LastBase = Base;
+        Custom.LastInstance = Instance;
+        Custom.CheckIn = CustomNameInterval;
+
+        auto Name = ReadCustomName(Player, Base);
+        const std::scoped_lock Guard{ Custom.Lock };
+
+        if (Base == Custom.Base && Name == Custom.Name)
+            return;
+
+        if (Settings::VerboseLog() && (!Name.empty() || !Custom.Name.empty()))
+            REX::INFO("Weapon HUD: custom name {}", Name.empty() ? "none"s : std::format("'{}'", Name));
+
+        Custom.Base = Base;
+        Custom.Name = std::move(Name);
+    }
+
     void Install()
     {
         REL::Relocation<std::uintptr_t> AmmoVtable{ RE::VTABLE::HUDAmmoCounter[0] };

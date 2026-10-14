@@ -30,6 +30,7 @@ namespace WeaponConfig
         BulletInChamber,
         DropUnspentAmmo,
         AimDownSight,
+        ManualReload,
 
         Count
     };
@@ -80,6 +81,11 @@ namespace WeaponConfig
         bool                    DisableInEmptyReloads{ false };
         float                   BlendIn{ 0.0f };
         float                   BlendOut{ 0.0f };
+
+        const RE::BGSSoundDescriptorForm* LockSound{ nullptr };
+        const RE::BGSSoundDescriptorForm* ReleaseSound{ nullptr };
+        std::vector<RE::BSFixedString>    HideNodes;
+        std::vector<RE::BSFixedString>    ShowNodes;
     };
 
     struct FireModeRule

@@ -16,5 +16,7 @@
 
 namespace WeaponHUD
 {
+    void Tick(RE::PlayerCharacter* Player, float Delta);
+
     void Install();
 }

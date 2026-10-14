@@ -13,6 +13,7 @@
 */
 
 #include "ManualReload.h"
+#include "Config/WeaponConfig.h"
 #include "Settings/Settings.h"
 
 namespace
@@ -28,11 +29,24 @@ namespace
 
     constexpr float DisarmedTimer = -1.0f;
 
+    thread_local bool SkipAutoReload{ false };
+
+    [[nodiscard]] bool ManualFor(const RE::BGSObjectInstanceT<RE::TESObjectWEAP>& Weapon)
+    {
+        if (!Settings::ManualReload())
+            return false;
+
+        const auto Base = Weapon.object ? Weapon.object->As<RE::TESObjectWEAP>() : nullptr;
+        const auto Instance = static_cast<const RE::TESObjectWEAP::InstanceData*>(Weapon.instanceData.get());
+
+        return !Base || !WeaponConfig::Excluded(WeaponConfig::Feature::ManualReload, Base, Instance);
+    }
+
     struct QueueAutoReload
     {
         static void Thunk(void* Action)
         {
-            if (Settings::ManualReload())
+            if (SkipAutoReload)
             {
                 if (Settings::VerboseLog())
                     REX::INFO("Manual reload: automatic reload skipped");
@@ -50,9 +64,15 @@ namespace
     {
         static std::uint32_t Thunk(RE::PlayerCharacter* Player, const RE::BGSObjectInstanceT<RE::TESObjectWEAP>& Weapon, std::uint32_t EquipIndex, std::uint32_t Flags)
         {
+            const bool Manual = ManualFor(Weapon);
+            SkipAutoReload = Manual;
             const auto Remaining = Original(Player, Weapon, EquipIndex, Flags);
+            SkipAutoReload = false;
 
-            if (Remaining == 0 && Settings::ManualReload() && Player->autoReloadTimer >= 0.0f)
+            if (Remaining == 0 && !Manual && Settings::ManualReload() && Settings::VerboseLog())
+                REX::INFO("Manual reload: the weapon is excluded, the game reloads on its own");
+
+            if (Remaining == 0 && Manual && Player->autoReloadTimer >= 0.0f)
             {
                 Player->autoReloadTimer = DisarmedTimer;
 

@@ -66,6 +66,10 @@ namespace
         std::optional<bool>                     DisableInEmptyReloads;
         std::optional<float>                    BlendIn;
         std::optional<float>                    BlendOut;
+        std::optional<std::string>              LockSound;
+        std::optional<std::string>              ReleaseSound;
+        std::optional<std::vector<std::string>> HideBones;
+        std::optional<std::vector<std::string>> ShowBones;
     };
 
     struct FireModeOptions
@@ -163,7 +167,8 @@ struct glz::meta<SlideLockOptions>
 {
     using T = SlideLockOptions;
     static constexpr auto value = object("bones", &T::Bones, "disableInEmptyReloads", &T::DisableInEmptyReloads, "blendIn", &T::BlendIn,
-        "blendOut", &T::BlendOut);
+        "blendOut", &T::BlendOut, "lockSound", &T::LockSound, "releaseSound", &T::ReleaseSound, "hideBones", &T::HideBones, "showBones",
+        &T::ShowBones);
 };
 
 template <>
@@ -213,7 +218,7 @@ namespace
 
     using WeaponConfig::Feature;
 
-    constexpr std::array<std::pair<std::string_view, Feature>, 12> FeatureNames{ {
+    constexpr std::array<std::pair<std::string_view, Feature>, 13> FeatureNames{ {
         { "loopedReload"sv, Feature::LoopedReload },
         { "sprintTransitions"sv, Feature::SprintTransitions },
         { "sightedReload"sv, Feature::SightedReload },
@@ -226,6 +231,7 @@ namespace
         { "bulletInChamber"sv, Feature::BulletInChamber },
         { "dropUnspentAmmo"sv, Feature::DropUnspentAmmo },
         { "aimDownSight"sv, Feature::AimDownSight },
+        { "manualReload"sv, Feature::ManualReload },
     } };
 
     constexpr glz::opts ReadOptions{ .comments = true };
@@ -614,7 +620,69 @@ namespace
         return Bones;
     }
 
-    [[nodiscard]] std::optional<SlideLockRule> MakeRule(const SlideLockOptions& Options, std::string_view Where)
+    [[nodiscard]] const RE::BGSSoundDescriptorForm* FindSound(const std::optional<std::string>& EntryPlugin, std::string_view Reference, std::string_view Key,
+        std::string_view Where)
+    {
+        const auto KeyWhere = std::format("{} {}", Where, Key);
+
+        if (Reference.empty())
+        {
+            REX::WARN("  {}: empty sound", KeyWhere);
+            return nullptr;
+        }
+
+        if (const auto Separator = Reference.find('|'); Separator != std::string_view::npos)
+        {
+            const std::optional<std::string> Plugin{ std::string{ Reference.substr(0, Separator) } };
+            const auto                       ID = Reference.substr(Separator + 1);
+
+            if (!IsFormID(ID))
+            {
+                REX::WARN("  {}: '{}' needs a FormID starting with \"0x\" after the '|'", KeyWhere, Reference);
+                return nullptr;
+            }
+
+            return LookupFormID<RE::BGSSoundDescriptorForm>(Plugin, ID, "sound descriptor", KeyWhere);
+        }
+
+        if (IsFormID(Reference))
+            return LookupFormID<RE::BGSSoundDescriptorForm>(EntryPlugin, Reference, "sound descriptor", KeyWhere);
+
+        const auto Sound = RE::TESForm::GetFormByEditorID<RE::BGSSoundDescriptorForm>(Reference);
+
+        if (!Sound)
+            REX::WARN("  {}: no sound descriptor with editor ID '{}'", KeyWhere, Reference);
+
+        return Sound;
+    }
+
+    [[nodiscard]] std::optional<std::vector<RE::BSFixedString>> MakeNodeNames(const std::vector<std::string>& Names, std::string_view Key, std::string_view Where)
+    {
+        std::vector<RE::BSFixedString> Nodes;
+
+        for (const auto& Name : Names)
+        {
+            if (Name.empty())
+            {
+                REX::WARN("  {}: empty name in {}", Where, Key);
+                return std::nullopt;
+            }
+
+            RE::BSFixedString CaseInsensitiveName{ Name };
+
+            if (std::ranges::find(Nodes, CaseInsensitiveName) != Nodes.end())
+            {
+                REX::WARN("  {}: '{}' listed twice in {}", Where, Name, Key);
+                return std::nullopt;
+            }
+
+            Nodes.push_back(std::move(CaseInsensitiveName));
+        }
+
+        return Nodes;
+    }
+
+    [[nodiscard]] std::optional<SlideLockRule> MakeRule(const SlideLockOptions& Options, const std::optional<std::string>& Plugin, std::string_view Where)
     {
         if (!Options.Bones || Options.Bones->empty())
         {
@@ -636,10 +704,47 @@ namespace
         if (!Bones)
             return std::nullopt;
 
-        return SlideLockRule{ .Bones = std::move(*Bones),
+        SlideLockRule Rule{ .Bones = std::move(*Bones),
             .DisableInEmptyReloads = Options.DisableInEmptyReloads.value_or(false),
             .BlendIn = Options.BlendIn.value_or(0.0f),
             .BlendOut = Options.BlendOut.value_or(0.0f) };
+
+        for (const auto& [Key, Source, Target] : { std::tuple{ "lockSound"sv, &Options.LockSound, &Rule.LockSound },
+                 std::tuple{ "releaseSound"sv, &Options.ReleaseSound, &Rule.ReleaseSound } })
+        {
+            if (!*Source)
+                continue;
+
+            *Target = FindSound(Plugin, **Source, Key, Where);
+
+            if (!*Target)
+                return std::nullopt;
+        }
+
+        for (const auto& [Key, Source, Target] : { std::tuple{ "hideBones"sv, &Options.HideBones, &Rule.HideNodes },
+                 std::tuple{ "showBones"sv, &Options.ShowBones, &Rule.ShowNodes } })
+        {
+            if (!*Source)
+                continue;
+
+            auto Made = MakeNodeNames(**Source, Key, Where);
+
+            if (!Made)
+                return std::nullopt;
+
+            *Target = std::move(*Made);
+        }
+
+        for (const auto& Hidden : Rule.HideNodes)
+        {
+            if (std::ranges::find(Rule.ShowNodes, Hidden) != Rule.ShowNodes.end())
+            {
+                REX::WARN("  {}: '{}' is in both hideBones and showBones", Where, Hidden.c_str());
+                return std::nullopt;
+            }
+        }
+
+        return Rule;
     }
 
     [[nodiscard]] std::optional<FireModeRule> MakeRule(const FireModeOptions& Options, std::string_view Where)
@@ -729,10 +834,26 @@ namespace
         return Text;
     }
 
+    [[nodiscard]] std::string DescribeNodes(const std::vector<RE::BSFixedString>& Nodes, std::string_view Key)
+    {
+        std::string Text;
+
+        for (const auto& Node : Nodes)
+            Text += std::format("{}{}", Text.empty() ? std::format(", {} ", Key) : ", "s, Node.c_str());
+
+        return Text;
+    }
+
     [[nodiscard]] std::string Describe(const SlideLockRule& Rule)
     {
-        return std::format("{}{}, blend in {:.3f}s, out {:.3f}s", DescribeBones(Rule.Bones, "bones"sv),
-            Rule.DisableInEmptyReloads ? ", off in empty reloads" : "", Rule.BlendIn, Rule.BlendOut);
+        const auto Sound = [](std::string_view Key, const RE::BGSSoundDescriptorForm* Form)
+        {
+            return Form ? std::format(", {} {:08X}", Key, Form->GetFormID()) : std::string{};
+        };
+
+        return std::format("{}{}, blend in {:.3f}s, out {:.3f}s{}{}{}{}", DescribeBones(Rule.Bones, "bones"sv),
+            Rule.DisableInEmptyReloads ? ", off in empty reloads" : "", Rule.BlendIn, Rule.BlendOut, Sound("lock sound"sv, Rule.LockSound),
+            Sound("release sound"sv, Rule.ReleaseSound), DescribeNodes(Rule.HideNodes, "hides"sv), DescribeNodes(Rule.ShowNodes, "shows"sv));
     }
 
     [[nodiscard]] std::string Describe(const FireModeRule& Rule)
@@ -829,7 +950,7 @@ namespace
         {
             const auto FeatureWhere = std::format("{} slideLock", Where);
 
-            if (const auto Rule = MakeRule(*Options, FeatureWhere))
+            if (const auto Rule = MakeRule(*Options, Entry.Plugin, FeatureWhere))
                 AddRule(SlideLockRules, Form, *Rule, FeatureWhere);
         }
 

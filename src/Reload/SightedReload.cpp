@@ -90,6 +90,7 @@ namespace
         {
             Base = CurrentBase;
             Instance = CurrentInstance;
+            ReloadActive = false;
             const bool CurrentMatch = CurrentBase && WeaponConfig::MatchSighted(CurrentBase, CurrentInstance);
 
             if (CurrentMatch != Matched)

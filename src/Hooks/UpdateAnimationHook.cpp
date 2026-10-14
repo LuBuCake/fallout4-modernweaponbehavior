@@ -16,6 +16,7 @@
 #include "Magic/MagicAnnotations.h"
 #include "Arm/ArmSpace.h"
 #include "HUD/AmmoCheckDisplay.h"
+#include "HUD/WeaponHUD.h"
 #include "Melee/HoldBlock.h"
 #include "ClipGeneratorHook.h"
 #include "Reload/BoltChargeResync.h"
@@ -60,6 +61,7 @@ namespace
             FireModePose::Tick(This, Delta);
             WeaponBones::EndFrame();
             AmmoCheckDisplay::Tick(This);
+            WeaponHUD::Tick(This, Delta);
             ScopeSway::Tick(This, Delta);
             HoldBlock::Tick(This, Delta);
             SprintFire::Tick(This, Delta);

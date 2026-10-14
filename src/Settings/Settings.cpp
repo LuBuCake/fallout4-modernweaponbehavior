@@ -33,6 +33,7 @@ namespace
     REX::TIniSetting<bool> HoldBlockSetting{ "HoldBlock", "bEnabled", false };
     REX::TIniSetting<bool> FireWhileSprintingSetting{ "FireWhileSprinting", "bEnabled", false };
     REX::TIniSetting<bool> SightedFireJiggleSetting{ "SightedFireJiggle", "bEnabled", true };
+    REX::TIniSetting<bool> FullEquipOnSwitchSetting{ "FullEquipOnSwitch", "bEnabled", false };
 
     constexpr auto BaseFile = "Data/F4SE/Plugins/MWB.ini";
     constexpr auto CustomFile = "Data/F4SE/Plugins/MWB_Custom.ini";
@@ -61,6 +62,7 @@ namespace
         McmBool{ "HoldBlock", "bEnabled", &HoldBlockSetting },
         McmBool{ "FireWhileSprinting", "bEnabled", &FireWhileSprintingSetting },
         McmBool{ "SightedFireJiggle", "bEnabled", &SightedFireJiggleSetting },
+        McmBool{ "FullEquipOnSwitch", "bEnabled", &FullEquipOnSwitchSetting },
     };
 
     bool FireModeSwitchAtStartup{ true };
@@ -85,11 +87,12 @@ namespace
     void LogValues(std::string_view When)
     {
         REX::INFO("Settings ({}): verboseLog={}, bulletInChamber={}, dropUnspentAmmo={}, manualReload={}, slideLock={}, fireModeSwitch={}, weaponHUD={}, "
-                  "thirdPersonSprintFOV={}, aimWobble(vanillaScopes={}, 3DScopes={}, noScope={}), holdBlock={}, fireWhileSprinting={}, sightedFireJiggle={}",
+                  "thirdPersonSprintFOV={}, aimWobble(vanillaScopes={}, 3DScopes={}, noScope={}), holdBlock={}, fireWhileSprinting={}, sightedFireJiggle={}, "
+                  "fullEquipOnSwitch={}",
             When, VerboseLogSetting.GetValue(), BulletInChamberSetting.GetValue(), DropUnspentAmmoSetting.GetValue(), ManualReloadSetting.GetValue(),
             SlideLockSetting.GetValue(), FireModeSwitchSetting.GetValue(), WeaponHUDSetting.GetValue(), ThirdPersonSprintFOVSetting.GetValue(),
             AimWobbleVanillaScopesSetting.GetValue(), AimWobble3DScopesSetting.GetValue(), AimWobbleNoScopeSetting.GetValue(), HoldBlockSetting.GetValue(), FireWhileSprintingSetting.GetValue(),
-            SightedFireJiggleSetting.GetValue());
+            SightedFireJiggleSetting.GetValue(), FullEquipOnSwitchSetting.GetValue());
     }
 }
 
@@ -184,5 +187,10 @@ namespace Settings
     bool SightedFireJiggle()
     {
         return SightedFireJiggleSetting.GetValue();
+    }
+
+    bool FullEquipOnSwitch()
+    {
+        return FullEquipOnSwitchSetting.GetValue();
     }
 }
