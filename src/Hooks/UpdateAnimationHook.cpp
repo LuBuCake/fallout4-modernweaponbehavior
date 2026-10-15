@@ -28,6 +28,7 @@
 #include "Sprint/SprintFire.h"
 #include "Sprint/SprintTransitions.h"
 #include "Weapon/FireMode.h"
+#include "Weapon/AimAfterLoad.h"
 #include "Weapon/AimDownSight.h"
 #include "Weapon/FireModePose.h"
 #include "Weapon/ScopeSway.h"
@@ -65,6 +66,7 @@ namespace
             ScopeSway::Tick(This, Delta);
             HoldBlock::Tick(This, Delta);
             SprintFire::Tick(This, Delta);
+            AimAfterLoad::Tick(This, Delta);
         }
 
         inline static REL::Relocation<decltype(Thunk)> Original;

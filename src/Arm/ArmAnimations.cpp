@@ -23,6 +23,10 @@ namespace
         "rifleSightedStart"sv,
         "reloadStart"sv, "MWB_ReloadReserveStart"sv, "boltChargeStart"sv,
         "meleeAttackGun"sv, "meleeAttackBayonet"sv, "meleeAttackShredder"sv,
+        "meleeattackStart"sv, "meleeattackPowerStart"sv, "meleeattackBackStart"sv, "meleeattackSprintStart"sv,
+        "meleeattackSneakStart"sv, "meleeAttackPowerSneakStart"sv, "meleeattackSpecial"sv, "meleeattackOnRecoilStart"sv,
+        "meleeAttackRipperStart"sv, "meleeattackRipperSneakStart"sv,
+        "blockStart"sv, "blockSneakStart"sv, "blockStartSneak"sv,
         "grenadeThrowStart"sv, "mineThrowStart"sv,
         "MWB_Inspect"sv, "MWB_AmmoCheck"sv, "MWB_SpecialAttack"sv,
     };
@@ -62,7 +66,7 @@ namespace ArmAnimations
             const bool Entering = Tag == *CombatEnter;
 
             if (InCombatState.exchange(Entering) != Entering && Settings::VerboseLog())
-                REX::INFO("Arm animation: {} CombatState", Entering ? "in" : "out of");
+                REX::INFO("Arm animation: {} the weapon state", Entering ? "in" : "out of");
 
             return;
         }
@@ -110,7 +114,7 @@ namespace ArmAnimations
             return nullptr;
 
         if (Settings::VerboseLog())
-            REX::INFO("Arm animation: {} outside GunBehavior's CombatState, sent as {}", Name, FallbackEvent->c_str());
+            REX::INFO("Arm animation: {} outside the weapon state, sent as {}", Name, FallbackEvent->c_str());
 
         return &*FallbackEvent;
     }

@@ -41,6 +41,7 @@
 #include "Reload/TacticalReload.h"
 #include "Settings/Settings.h"
 #include "Sprint/SprintFire.h"
+#include "Weapon/AimAfterLoad.h"
 #include "Weapon/AimDownSight.h"
 #include "Weapon/FireMode.h"
 #include "Weapon/FireModePose.h"
@@ -136,11 +137,13 @@ namespace Core
         ScopeSway::Reset();
         HoldBlock::Reset();
         SprintFire::Reset();
+        AimAfterLoad::Reset();
     }
 
     void PostLoadGame()
     {
         ScopeSway::DisableSeeThroughScopesHoldBreath();
         AmmoCheckDisplay::EnsureOpen();
+        AimAfterLoad::Arm();
     }
 }
