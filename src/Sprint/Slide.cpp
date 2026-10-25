@@ -269,6 +269,7 @@ namespace
     void ToggleSneak(RE::PlayerInputHandler* Handler, const RE::ButtonEvent& Pressed, auto&& Original)
     {
         RE::ButtonEvent Release{ Pressed };
+        *reinterpret_cast<std::uintptr_t*>(std::addressof(Release)) = *reinterpret_cast<const std::uintptr_t*>(std::addressof(Pressed));
         Release.value = 0.0f;
         Release.heldDownSecs = 0.0f;
         Original(Handler, &Release);
