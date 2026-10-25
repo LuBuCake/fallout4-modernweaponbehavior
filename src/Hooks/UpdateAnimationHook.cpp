@@ -26,7 +26,9 @@
 #include "Settings/Settings.h"
 #include "Sprint/SprintCamera.h"
 #include "Sprint/SprintFire.h"
+#include "Sprint/Slide.h"
 #include "Sprint/SprintTransitions.h"
+#include "Sprint/TacticalSprint.h"
 #include "Weapon/FireMode.h"
 #include "Weapon/AimAfterLoad.h"
 #include "Weapon/AimDownSight.h"
@@ -66,6 +68,8 @@ namespace
             ScopeSway::Tick(This, Delta);
             HoldBlock::Tick(This, Delta);
             SprintFire::Tick(This, Delta);
+            TacticalSprint::Tick(This, Delta);
+            Slide::Tick(This, Delta);
             AimAfterLoad::Tick(This, Delta);
         }
 

@@ -21,7 +21,9 @@
 #include "Reload/BoltChargeResync.h"
 #include "Reload/DropUnspentAmmo.h"
 #include "Reload/TacticalReload.h"
+#include "Sprint/Slide.h"
 #include "Sprint/SprintFire.h"
+#include "Weapon/FireLast.h"
 #include "Weapon/FireMode.h"
 #include "Weapon/FullEquip.h"
 #include "Weapon/ScopeSway.h"
@@ -66,6 +68,9 @@ namespace
             if (ScopeSway::Refuse(*SentEvent))
                 return false;
 
+            if (Slide::Refuse(*SentEvent))
+                return false;
+
             if (const auto Replacement = WeaponActions::Replace(*SentEvent))
             {
                 if (Original(This, *Replacement))
@@ -96,6 +101,7 @@ namespace
             }
 
             SprintFire::OnEventSending(*SentEvent);
+            FireLast::OnEventSending(*SentEvent);
             const auto DrawState = FullEquip::Begin(This, *SentEvent);
             const bool Accepted = Original(This, *SentEvent);
             FullEquip::End(This, DrawState);

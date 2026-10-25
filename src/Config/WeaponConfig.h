@@ -31,6 +31,8 @@ namespace WeaponConfig
         DropUnspentAmmo,
         AimDownSight,
         ManualReload,
+        Slide,
+        FireLast,
 
         Count
     };
@@ -45,8 +47,19 @@ namespace WeaponConfig
         bool Start{ true };
         bool Stop{ true };
         bool Equip{ false };
+        bool TacticalStart{ false };
+        bool Tactical{ false };
+        bool TacticalStop{ false };
 
         bool operator==(const SprintRule&) const = default;
+    };
+
+    struct FireLastRule
+    {
+        bool Ready{ true };
+        bool Sighted{ true };
+
+        bool operator==(const FireLastRule&) const = default;
     };
 
     struct SightedRule
@@ -105,6 +118,8 @@ namespace WeaponConfig
     [[nodiscard]] std::optional<SprintRule>    MatchSprint(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
     [[nodiscard]] bool                         MatchSighted(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
     [[nodiscard]] bool                         MatchAimDownSight(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
+    [[nodiscard]] bool                         MatchSlide(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
+    [[nodiscard]] std::optional<FireLastRule>  MatchFireLast(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
     [[nodiscard]] std::optional<TacticalRule>  MatchTactical(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
     [[nodiscard]] std::optional<FireModeRule>  MatchFireMode(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
     [[nodiscard]] std::optional<SlideLockRule> MatchSlideLock(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
@@ -117,4 +132,57 @@ namespace WeaponConfig
     };
 
     [[nodiscard]] std::optional<ActionRule> MatchAction(WeaponAction Action, RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
+
+    [[nodiscard]] std::uint32_t Generation();
+
+    [[nodiscard]] std::string_view FeatureKey(Feature TargetFeature);
+
+    [[nodiscard]] std::optional<Feature> FeatureFromKey(std::string_view Key);
+
+    enum class FeatureState
+    {
+        NotApplicable,
+        On,
+        ExcludedByPlayer,
+        ExcludedByMod,
+        OptionOff,
+    };
+
+    enum class SourceKind
+    {
+        None,
+        Weapon,
+        Keyword,
+        FormList,
+        EveryGun,
+        PlayerOption,
+    };
+
+    struct FeatureReport
+    {
+        Feature      Which{ Feature::Count };
+        FeatureState State{ FeatureState::NotApplicable };
+        SourceKind   Kind{ SourceKind::None };
+        std::string  File;
+        std::string  Name;
+    };
+
+    [[nodiscard]] std::vector<FeatureReport> Report(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
+
+    [[nodiscard]] std::vector<const RE::BGSKeyword*> TargetKeywords(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
+
+    bool TogglePlayerExclusion(const RE::TESForm* Target, Feature TargetFeature, RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance);
+
+    struct PlayerExclusion
+    {
+        std::string          Plugin;
+        std::uint32_t        LocalID{ 0 };
+        bool                 Keyword{ false };
+        const RE::TESForm*   Form{ nullptr };
+        std::vector<Feature> Features;
+    };
+
+    [[nodiscard]] std::vector<PlayerExclusion> PlayerExclusions();
+
+    bool RemovePlayerExclusion(std::size_t Index, std::optional<Feature> TargetFeature);
 }

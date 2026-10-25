@@ -14,8 +14,12 @@
 
 #pragma once
 
+#include "Config/WeaponConfig.h"
+
 namespace Sprint
 {
+    [[nodiscard]] std::optional<WeaponConfig::SprintRule> CurrentRule();
+
     void OnAnimationEvent(const RE::BSFixedString& Tag);
 
     void Tick(RE::PlayerCharacter* Player, float Delta);

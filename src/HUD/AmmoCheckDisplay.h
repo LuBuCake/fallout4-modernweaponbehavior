@@ -21,4 +21,8 @@ namespace AmmoCheckDisplay
     void Tick(RE::PlayerCharacter* Player);
 
     void EnsureOpen();
+
+    [[nodiscard]] std::optional<bool> ShowWithoutAnimation();
+
+    void SetCounterPoint(float X, float Y);
 }

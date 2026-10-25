@@ -72,6 +72,14 @@ namespace
         if (!Ammo || Ammo->data.health != 0 || RE::TESAmmo::GetReloadsWithAmmoRef(Ammo))
             return false;
 
+        if (Settings::BulletInChamberTacticalOnly())
+        {
+            const auto Tactical = WeaponConfig::MatchTactical(Base, Instance);
+
+            if (!Tactical || !Tactical->FirstPerson)
+                return false;
+        }
+
         return !WeaponConfig::MatchLoop(Base, Instance) && !WeaponConfig::Excluded(WeaponConfig::Feature::BulletInChamber, Base, Instance);
     }
 

@@ -13,9 +13,11 @@
 */
 
 #include "WeaponConfig.h"
+#include "Settings/Settings.h"
 
 #include <glaze/json.hpp>
 
+#include <shared_mutex>
 #include <variant>
 
 namespace
@@ -30,6 +32,15 @@ namespace
         std::optional<bool> Start;
         std::optional<bool> Stop;
         std::optional<bool> Equip;
+        std::optional<bool> TacticalStart;
+        std::optional<bool> Tactical;
+        std::optional<bool> TacticalStop;
+    };
+
+    struct FireLastOptions
+    {
+        std::optional<bool> Ready;
+        std::optional<bool> Sighted;
     };
 
     struct TacticalOptions
@@ -98,6 +109,8 @@ namespace
         FeatureValue<SlideLockOptions> SlideLock;
         FeatureValue<FireModeOptions>  FireModeSwitch;
         std::optional<bool>            AimDownSight;
+        std::optional<bool>            Slide;
+        FeatureValue<FireLastOptions>  FireLast;
     };
 
     struct ConfigFile
@@ -131,7 +144,15 @@ template <>
 struct glz::meta<SprintOptions>
 {
     using T = SprintOptions;
-    static constexpr auto value = object("start", &T::Start, "stop", &T::Stop, "equip", &T::Equip);
+    static constexpr auto value = object("start", &T::Start, "stop", &T::Stop, "equip", &T::Equip, "tacticalStart", &T::TacticalStart, "tactical", &T::Tactical,
+        "tacticalStop", &T::TacticalStop);
+};
+
+template <>
+struct glz::meta<FireLastOptions>
+{
+    using T = FireLastOptions;
+    static constexpr auto value = object("ready", &T::Ready, "sighted", &T::Sighted);
 };
 
 template <>
@@ -186,7 +207,8 @@ struct glz::meta<WeaponEntry>
         "loopedReload", &T::LoopedReload,
         "sprintTransitions", &T::SprintTransitions, "sightedReload", &T::SightedReload, "tacticalReload", &T::TacticalReload,
         "inspect", &T::Inspect, "ammoCheck", &T::AmmoCheck, "specialAttack", &T::SpecialAttack, "slideLock", &T::SlideLock,
-        "fireModeSwitch", &T::FireModeSwitch, "aimDownSight", &T::AimDownSight);
+        "fireModeSwitch", &T::FireModeSwitch, "aimDownSight", &T::AimDownSight, "slide", &T::Slide,
+        "fireLast", &T::FireLast);
 };
 
 template <>
@@ -218,7 +240,7 @@ namespace
 
     using WeaponConfig::Feature;
 
-    constexpr std::array<std::pair<std::string_view, Feature>, 13> FeatureNames{ {
+    constexpr std::array<std::pair<std::string_view, Feature>, 15> FeatureNames{ {
         { "loopedReload"sv, Feature::LoopedReload },
         { "sprintTransitions"sv, Feature::SprintTransitions },
         { "sightedReload"sv, Feature::SightedReload },
@@ -232,6 +254,8 @@ namespace
         { "dropUnspentAmmo"sv, Feature::DropUnspentAmmo },
         { "aimDownSight"sv, Feature::AimDownSight },
         { "manualReload"sv, Feature::ManualReload },
+        { "slide"sv, Feature::Slide },
+        { "fireLast"sv, Feature::FireLast },
     } };
 
     constexpr glz::opts ReadOptions{ .comments = true };
@@ -240,6 +264,7 @@ namespace
 
     using WeaponConfig::ActionRule;
     using WeaponConfig::BoneOffset;
+    using WeaponConfig::FireLastRule;
     using WeaponConfig::FireModeRule;
     using WeaponConfig::LoopRule;
     using WeaponConfig::SightedRule;
@@ -285,18 +310,67 @@ namespace
         });
     }
 
+    struct RuleSource
+    {
+        const void*              Form{ nullptr };
+        WeaponConfig::SourceKind Kind{ WeaponConfig::SourceKind::None };
+        std::string              File;
+        std::string              Name;
+    };
+
     template <class Rule>
     struct RuleList
     {
         std::vector<std::pair<const RE::BGSKeyword*, Rule>>    Keywords;
         std::vector<std::pair<const RE::TESObjectWEAP*, Rule>> Weapons;
         std::vector<std::pair<const RE::BGSListForm*, Rule>>   FormLists;
+        std::vector<RuleSource>                                Sources;
 
         void clear()
         {
             Keywords.clear();
             Weapons.clear();
             FormLists.clear();
+            Sources.clear();
+        }
+
+        [[nodiscard]] const void* MatchForm(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance) const
+        {
+            if (!Base)
+                return nullptr;
+
+            for (const auto& Entry : Weapons)
+            {
+                if (Entry.first == Base)
+                    return Entry.first;
+            }
+
+            for (const auto& Entry : FormLists)
+            {
+                if (ListHasWeapon(*Entry.first, Base))
+                    return Entry.first;
+            }
+
+            for (const auto& Entry : Keywords)
+            {
+                if (Base->HasKeyword(Entry.first, Instance))
+                    return Entry.first;
+            }
+
+            for (const auto& Entry : FormLists)
+            {
+                if (ListHasKeywordOf(*Entry.first, Base, Instance))
+                    return Entry.first;
+            }
+
+            return nullptr;
+        }
+
+        [[nodiscard]] RuleSource SourceOf(const void* Form) const
+        {
+            const auto Known = std::ranges::find(Sources, Form, &RuleSource::Form);
+
+            return Known != Sources.end() ? *Known : RuleSource{ .Form = Form };
         }
 
         [[nodiscard]] std::size_t size() const
@@ -367,12 +441,26 @@ namespace
     RuleList<SlideLockRule> SlideLockRules;
     RuleList<FireModeRule>  FireModeRules;
     RuleList<SightedRule>   AimDownSightRules;
+    RuleList<SightedRule>   SlideRules;
+    RuleList<FireLastRule>  FireLastRules;
 
     std::array<RuleList<SightedRule>, static_cast<std::size_t>(Feature::Count)> ExclusionRules;
 
+    std::shared_mutex                                                            PlayerLock;
+    std::array<RuleList<SightedRule>, static_cast<std::size_t>(Feature::Count)> PlayerExclusionRules;
+    std::vector<WeaponConfig::PlayerExclusion>                                   PlayerData;
+    std::atomic<std::uint32_t>                                                   ConfigGeneration{ 0 };
+
     [[nodiscard]] bool IsExcluded(Feature TargetFeature, RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
     {
-        return ExclusionRules[static_cast<std::size_t>(TargetFeature)].Match(Base, Instance).has_value();
+        const auto Index = static_cast<std::size_t>(TargetFeature);
+
+        if (ExclusionRules[Index].Match(Base, Instance))
+            return true;
+
+        std::shared_lock Lock{ PlayerLock };
+
+        return PlayerExclusionRules[Index].Match(Base, Instance).has_value();
     }
 
     template <class Rule>
@@ -567,11 +655,31 @@ namespace
 
     [[nodiscard]] std::optional<SprintRule> MakeRule(const SprintOptions& Options, std::string_view Where)
     {
-        const SprintRule Rule{ .Start = Options.Start.value_or(true), .Stop = Options.Stop.value_or(true), .Equip = Options.Equip.value_or(false) };
+        const SprintRule Rule{
+            .Start = Options.Start.value_or(true),
+            .Stop = Options.Stop.value_or(true),
+            .Equip = Options.Equip.value_or(false),
+            .TacticalStart = Options.TacticalStart.value_or(false),
+            .Tactical = Options.Tactical.value_or(false),
+            .TacticalStop = Options.TacticalStop.value_or(false),
+        };
 
-        if (!Rule.Start && !Rule.Stop && !Rule.Equip)
+        if (Rule == SprintRule{ .Start = false, .Stop = false })
         {
-            REX::WARN("  {}: \"start\", \"stop\" and \"equip\" all false, it does nothing", Where);
+            REX::WARN("  {}: every clip is off, it does nothing", Where);
+            return std::nullopt;
+        }
+
+        return Rule;
+    }
+
+    [[nodiscard]] std::optional<FireLastRule> MakeRule(const FireLastOptions& Options, std::string_view Where)
+    {
+        const FireLastRule Rule{ .Ready = Options.Ready.value_or(true), .Sighted = Options.Sighted.value_or(true) };
+
+        if (!Rule.Ready && !Rule.Sighted)
+        {
+            REX::WARN("  {}: \"ready\" and \"sighted\" both false, it does nothing", Where);
             return std::nullopt;
         }
 
@@ -781,7 +889,17 @@ namespace
 
     [[nodiscard]] std::string Describe(const SprintRule& Rule)
     {
-        return std::format(", start {}, stop {}, equip {}", Rule.Start ? "on" : "off", Rule.Stop ? "on" : "off", Rule.Equip ? "on" : "off");
+        const auto OnOff = [](bool Value) { return Value ? "on" : "off"; };
+
+        return std::format(", start {}, stop {}, equip {}, tactical start {}, tactical {}, tactical stop {}", OnOff(Rule.Start), OnOff(Rule.Stop),
+            OnOff(Rule.Equip), OnOff(Rule.TacticalStart), OnOff(Rule.Tactical), OnOff(Rule.TacticalStop));
+    }
+
+    [[nodiscard]] std::string Describe(const FireLastRule& Rule)
+    {
+        const auto OnOff = [](bool Value) { return Value ? "on" : "off"; };
+
+        return std::format(", ready {}, sighted {}", OnOff(Rule.Ready), OnOff(Rule.Sighted));
     }
 
     [[nodiscard]] std::string Describe(const SightedRule&)
@@ -878,29 +996,72 @@ namespace
     }
 
     template <class T, class Rule>
-    void AddRule(std::vector<std::pair<const T*, Rule>>& List, const T* Form, const Rule& NewRule, std::string_view Kind, std::string_view Where)
+    bool AddRule(std::vector<std::pair<const T*, Rule>>& List, const T* Form, const Rule& NewRule, std::string_view Kind, std::string_view Where)
     {
         const auto Known = std::ranges::find(List, Form, &std::pair<const T*, Rule>::first);
 
         if (Known != List.end())
         {
             REX::INFO("  {}: {} {:08X} already listed, ignored here", Where, Kind, Form->GetFormID());
-            return;
+            return false;
         }
 
         List.emplace_back(Form, NewRule);
         REX::INFO("  {}: {} {:08X}{}", Where, Kind, Form->GetFormID(), Describe(NewRule));
+
+        return true;
+    }
+
+    [[nodiscard]] std::string FormName(const RE::TESForm& Form)
+    {
+        if (Form.Is<RE::BGSKeyword>())
+        {
+            const auto EditorID = Form.GetFormEditorID();
+
+            if (EditorID && *EditorID)
+                return EditorID;
+        }
+        else if (Form.Is<RE::TESObjectWEAP>())
+        {
+            const auto Name = RE::TESFullName::GetFullName(Form);
+
+            if (!Name.empty())
+                return std::string{ Name };
+        }
+
+        return std::format("{:08X}", Form.GetFormID());
+    }
+
+    [[nodiscard]] std::string_view FileOf(std::string_view Where)
+    {
+        return Where.substr(0, Where.find(" entries["sv));
     }
 
     template <class T, class Rule>
     void AddRule(RuleList<Rule>& List, const T* Form, const Rule& NewRule, std::string_view Where)
     {
+        using WeaponConfig::SourceKind;
+
+        bool       Added = false;
+        SourceKind Kind = SourceKind::Weapon;
+
         if constexpr (std::is_same_v<T, RE::BGSKeyword>)
-            AddRule(List.Keywords, Form, NewRule, "keyword", Where);
+        {
+            Added = AddRule(List.Keywords, Form, NewRule, "keyword", Where);
+            Kind = SourceKind::Keyword;
+        }
         else if constexpr (std::is_same_v<T, RE::BGSListForm>)
-            AddRule(List.FormLists, Form, NewRule, "form list", Where);
+        {
+            Added = AddRule(List.FormLists, Form, NewRule, "form list", Where);
+            Kind = SourceKind::FormList;
+        }
         else
-            AddRule(List.Weapons, Form, NewRule, "weapon", Where);
+        {
+            Added = AddRule(List.Weapons, Form, NewRule, "weapon", Where);
+        }
+
+        if (Added)
+            List.Sources.push_back({ .Form = Form, .Kind = Kind, .File = std::string{ FileOf(Where) }, .Name = FormName(*Form) });
     }
 
     template <class T>
@@ -964,6 +1125,17 @@ namespace
 
         if (Entry.AimDownSight.value_or(false))
             AddRule(AimDownSightRules, Form, SightedRule{}, std::format("{} aimDownSight", Where));
+
+        if (Entry.Slide.value_or(false))
+            AddRule(SlideRules, Form, SightedRule{}, std::format("{} slide", Where));
+
+        if (const auto Options = Resolve(Entry.FireLast))
+        {
+            const auto FeatureWhere = std::format("{} fireLast", Where);
+
+            if (const auto Rule = MakeRule(*Options, FeatureWhere))
+                AddRule(FireLastRules, Form, *Rule, FeatureWhere);
+        }
     }
 
     void AddEntry(const WeaponEntry& Entry, std::string_view Where)
@@ -974,7 +1146,7 @@ namespace
         const bool TurnsAnyFeatureOn = Resolve(Entry.LoopedReload) || Resolve(Entry.SprintTransitions) || Entry.SightedReload.value_or(false) ||
                                        Resolve(Entry.TacticalReload) || Resolve(Entry.Inspect) || Resolve(Entry.AmmoCheck) ||
                                        Entry.SpecialAttack.value_or(false) || Resolve(Entry.SlideLock) || Resolve(Entry.FireModeSwitch) ||
-                                       Entry.AimDownSight.value_or(false);
+                                       Entry.AimDownSight.value_or(false) || Entry.Slide.value_or(false) || Resolve(Entry.FireLast);
 
         if (!TurnsAnyFeatureOn)
         {
@@ -1104,6 +1276,289 @@ namespace
 
         return Files;
     }
+
+    using WeaponConfig::PlayerExclusion;
+
+    const std::filesystem::path PlayerFile{ "Data/MCM/Settings/MWB_Exclusions.json" };
+
+    template <class Visitor>
+    void VisitFeatureList(Feature TargetFeature, Visitor&& Visit)
+    {
+        switch (TargetFeature)
+        {
+            case Feature::LoopedReload:
+                Visit(LoopRules);
+                break;
+            case Feature::SprintTransitions:
+                Visit(SprintRules);
+                break;
+            case Feature::SightedReload:
+                Visit(SightedRules);
+                break;
+            case Feature::TacticalReload:
+                Visit(TacticalRules);
+                break;
+            case Feature::Inspect:
+                Visit(InspectRules);
+                break;
+            case Feature::AmmoCheck:
+                Visit(AmmoCheckRules);
+                break;
+            case Feature::SpecialAttack:
+                Visit(SpecialAttackRules);
+                break;
+            case Feature::SlideLock:
+                Visit(SlideLockRules);
+                break;
+            case Feature::FireModeSwitch:
+                Visit(FireModeRules);
+                break;
+            case Feature::AimDownSight:
+                Visit(AimDownSightRules);
+                break;
+            case Feature::Slide:
+                Visit(SlideRules);
+                break;
+            case Feature::FireLast:
+                Visit(FireLastRules);
+                break;
+            default:
+                break;
+        }
+    }
+
+    [[nodiscard]] bool KeywordUsed(const RE::BGSKeyword* Keyword)
+    {
+        const auto InList = [&](const auto& List)
+        {
+            return std::ranges::any_of(List.Keywords, [&](const auto& Entry) { return Entry.first == Keyword; }) ||
+                   std::ranges::any_of(List.FormLists, [&](const auto& Entry)
+                   {
+                       return AnyListForm(*Entry.first, [&](const RE::TESForm& Form) { return &Form == Keyword; });
+                   });
+        };
+
+        bool Used = false;
+
+        for (std::size_t i = 0; i < static_cast<std::size_t>(Feature::Count) && !Used; ++i)
+        {
+            VisitFeatureList(static_cast<Feature>(i), [&](const auto& List) { Used = InList(List); });
+            Used = Used || InList(ExclusionRules[i]);
+        }
+
+        return Used;
+    }
+
+    [[nodiscard]] std::optional<std::pair<std::string, std::uint32_t>> FileAndLocalID(const RE::TESForm& Form)
+    {
+        if (Form.IsCreated())
+            return std::nullopt;
+
+        const auto File = Form.GetFile(0);
+
+        if (!File)
+            return std::nullopt;
+
+        const bool IsLight = File->compileIndex == 0xFE;
+        const auto LocalID = Form.GetFormID() & (IsLight ? 0xFFFu : 0xFFFFFFu);
+
+        return std::pair{ std::string{ File->GetFilename() }, LocalID };
+    }
+
+    [[nodiscard]] bool SamePlugin(std::string_view Left, std::string_view Right)
+    {
+        return Left.size() == Right.size() && _strnicmp(Left.data(), Right.data(), Left.size()) == 0;
+    }
+
+    [[nodiscard]] bool Hits(const PlayerExclusion& Entry, RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
+    {
+        if (!Entry.Form || !Base)
+            return false;
+
+        if (Entry.Keyword)
+            return Base->HasKeyword(Entry.Form->As<RE::BGSKeyword>(), Instance);
+
+        return Entry.Form == Base;
+    }
+
+    void RebuildPlayerRules()
+    {
+        for (auto& List : PlayerExclusionRules)
+            List.clear();
+
+        for (const auto& Entry : PlayerData)
+        {
+            if (!Entry.Form)
+                continue;
+
+            for (const auto ExcludedFeature : Entry.Features)
+            {
+                auto& List = PlayerExclusionRules[static_cast<std::size_t>(ExcludedFeature)];
+
+                if (Entry.Keyword)
+                    List.Keywords.emplace_back(Entry.Form->As<RE::BGSKeyword>(), SightedRule{});
+                else
+                    List.Weapons.emplace_back(Entry.Form->As<RE::TESObjectWEAP>(), SightedRule{});
+            }
+        }
+
+        ++ConfigGeneration;
+    }
+
+    void SavePlayerExclusions()
+    {
+        ExclusionFile Out;
+
+        for (const auto& Entry : PlayerData)
+        {
+            if (Entry.Features.empty())
+                continue;
+
+            ExclusionEntry Written{ .Plugin = Entry.Plugin };
+            const auto     ID = std::format("0x{:06X}", Entry.LocalID);
+
+            if (Entry.Keyword)
+                Written.Keyword = ID;
+            else
+                Written.Weapon = ID;
+
+            for (const auto ExcludedFeature : Entry.Features)
+                Written.Exclude.emplace_back(WeaponConfig::FeatureKey(ExcludedFeature));
+
+            Out.Entries.push_back(std::move(Written));
+        }
+
+        std::string Buffer;
+
+        if (const auto Error = glz::write<glz::opts{ .prettify = true }>(Out, Buffer))
+        {
+            REX::WARN("Player exclusions: cannot write the JSON");
+            return;
+        }
+
+        std::error_code Error;
+        std::filesystem::create_directories(PlayerFile.parent_path(), Error);
+
+        auto Temporary = PlayerFile;
+        Temporary += ".tmp";
+
+        {
+            std::ofstream File{ Temporary, std::ios::binary | std::ios::trunc };
+
+            if (!File.is_open())
+            {
+                REX::WARN("Player exclusions: cannot write {}", Temporary.string());
+                return;
+            }
+
+            File << Buffer;
+        }
+
+        std::filesystem::rename(Temporary, PlayerFile, Error);
+
+        if (Error)
+            REX::WARN("Player exclusions: cannot replace {} ({})", PlayerFile.string(), Error.message());
+        else
+            REX::INFO("Player exclusions: {} entries saved", Out.Entries.size());
+    }
+
+    void AddPlayerEntry(std::vector<PlayerExclusion>& Entries, const ExclusionEntry& Entry, std::string_view Where)
+    {
+        if (!Entry.Plugin || Entry.FormList || Entry.Keyword.has_value() == Entry.Weapon.has_value())
+        {
+            REX::WARN("  {}: needs \"plugin\" and one of \"keyword\" or \"weapon\"", Where);
+            return;
+        }
+
+        const bool  Keyword = Entry.Keyword.has_value();
+        const auto& ID = Keyword ? *Entry.Keyword : *Entry.Weapon;
+        const auto  LocalID = IsFormID(ID) ? ParseHex(ID) : std::nullopt;
+
+        if (!LocalID)
+        {
+            REX::WARN("  {}: '{}' is not a FormID starting with \"0x\"", Where, ID);
+            return;
+        }
+
+        PlayerExclusion Made{ .Plugin = *Entry.Plugin, .LocalID = *LocalID, .Keyword = Keyword };
+
+        if (IsLoaded(Made.Plugin))
+        {
+            const auto Form = LookupForm(Made.Plugin, Made.LocalID);
+
+            if (Form && (Keyword ? Form->Is<RE::BGSKeyword>() : Form->Is<RE::TESObjectWEAP>()))
+                Made.Form = Form;
+            else
+                REX::WARN("  {}: no {} {} in '{}'", Where, Keyword ? "keyword" : "weapon", ID, Made.Plugin);
+        }
+
+        for (const auto& Name : Entry.Exclude)
+        {
+            const auto Known = WeaponConfig::FeatureFromKey(Name);
+
+            if (!Known)
+            {
+                REX::WARN("  {}: '{}' is not a feature, ignored", Where, Name);
+                continue;
+            }
+
+            if (std::ranges::find(Made.Features, *Known) == Made.Features.end())
+                Made.Features.push_back(*Known);
+        }
+
+        if (Made.Features.empty())
+            return;
+
+        const auto Same = std::ranges::find_if(Entries, [&](const PlayerExclusion& Known)
+        {
+            return Known.Keyword == Made.Keyword && Known.LocalID == Made.LocalID && SamePlugin(Known.Plugin, Made.Plugin);
+        });
+
+        if (Same == Entries.end())
+        {
+            Entries.push_back(std::move(Made));
+            return;
+        }
+
+        for (const auto Added : Made.Features)
+        {
+            if (std::ranges::find(Same->Features, Added) == Same->Features.end())
+                Same->Features.push_back(Added);
+        }
+    }
+
+    void LoadPlayerExclusions()
+    {
+        std::vector<PlayerExclusion> Loaded;
+        std::error_code              Error;
+
+        if (std::filesystem::is_regular_file(PlayerFile, Error))
+        {
+            if (const auto Buffer = ReadText(PlayerFile))
+            {
+                ExclusionFile Parsed;
+
+                if (const auto ParseError = glz::read<ReadOptions>(Parsed, *Buffer))
+                {
+                    REX::WARN("Player exclusions: {} not read, nothing in it is used\n{}", PlayerFile.string(), glz::format_error(ParseError, *Buffer));
+                }
+                else
+                {
+                    for (std::size_t i = 0; i < Parsed.Entries.size(); ++i)
+                        AddPlayerEntry(Loaded, Parsed.Entries[i], std::format("MWB_Exclusions.json entries[{}]", i));
+                }
+            }
+        }
+
+        std::unique_lock Lock{ PlayerLock };
+        PlayerData = std::move(Loaded);
+
+        for (auto& Entry : PlayerData)
+            std::ranges::sort(Entry.Features);
+
+        RebuildPlayerRules();
+        REX::INFO("Player exclusions: {} entries", PlayerData.size());
+    }
 }
 
 namespace WeaponConfig
@@ -1120,6 +1575,8 @@ namespace WeaponConfig
         SlideLockRules.clear();
         FireModeRules.clear();
         AimDownSightRules.clear();
+        SlideRules.clear();
+        FireLastRules.clear();
 
         for (auto& List : ExclusionRules)
             List.clear();
@@ -1152,19 +1609,22 @@ namespace WeaponConfig
         const std::size_t FormListCount = LoopRules.FormLists.size() + SprintRules.FormLists.size() + SightedRules.FormLists.size() +
                                           TacticalRules.FormLists.size() + InspectRules.FormLists.size() + AmmoCheckRules.FormLists.size() +
                                           SpecialAttackRules.FormLists.size() + SlideLockRules.FormLists.size() + FireModeRules.FormLists.size() +
-                                          AimDownSightRules.FormLists.size();
+                                          AimDownSightRules.FormLists.size() + SlideRules.FormLists.size() + FireLastRules.FormLists.size();
 
         REX::INFO("Form lists: {} feature(s) turned on by a form list", FormListCount);
 
         REX::INFO("Looped reload: {} keyword(s) and {} weapon(s); sprint transitions: {} keyword(s) and {} weapon(s); "
                   "sighted reload: {} keyword(s) and {} weapon(s); tactical reload: {} keyword(s) and {} weapon(s); inspect / ammo check "
                   "/ special attack: {} / {} / {} entries; slide lock: {} keyword(s) and {} weapon(s); fire mode switch: {} keyword(s) and {} "
-                  "weapon(s); aim down sight clips: {} keyword(s) and {} weapon(s); from {} file(s)",
+                  "weapon(s); aim down sight clips: {} keyword(s) and {} weapon(s); slide clip: {} keyword(s) and {} weapon(s); last shot clips: {} keyword(s) and {} "
+                  "weapon(s); from {} file(s)",
             LoopRules.Keywords.size(), LoopRules.Weapons.size(), SprintRules.Keywords.size(), SprintRules.Weapons.size(),
             SightedRules.Keywords.size(), SightedRules.Weapons.size(), TacticalRules.Keywords.size(), TacticalRules.Weapons.size(),
             InspectRules.size(), AmmoCheckRules.size(), SpecialAttackRules.size(), SlideLockRules.Keywords.size(), SlideLockRules.Weapons.size(),
             FireModeRules.Keywords.size(), FireModeRules.Weapons.size(), AimDownSightRules.Keywords.size(), AimDownSightRules.Weapons.size(),
-            Files.size());
+            SlideRules.Keywords.size(), SlideRules.Weapons.size(), FireLastRules.Keywords.size(), FireLastRules.Weapons.size(), Files.size());
+
+        LoadPlayerExclusions();
     }
 
     std::optional<LoopRule> MatchLoop(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
@@ -1185,6 +1645,16 @@ namespace WeaponConfig
     bool MatchAimDownSight(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
     {
         return MatchUnlessExcluded(AimDownSightRules, Feature::AimDownSight, Base, Instance).has_value();
+    }
+
+    bool MatchSlide(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
+    {
+        return MatchUnlessExcluded(SlideRules, Feature::Slide, Base, Instance).has_value();
+    }
+
+    std::optional<FireLastRule> MatchFireLast(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
+    {
+        return MatchUnlessExcluded(FireLastRules, Feature::FireLast, Base, Instance);
     }
 
     std::optional<ActionRule> MatchAction(WeaponAction Action, RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
@@ -1241,5 +1711,209 @@ namespace WeaponConfig
     RE::TESForm* LookupPluginForm(std::string_view Plugin, std::uint32_t FormID)
     {
         return LookupForm(Plugin, FormID);
+    }
+
+    std::uint32_t Generation()
+    {
+        return ConfigGeneration.load();
+    }
+
+    std::string_view FeatureKey(Feature TargetFeature)
+    {
+        const auto Known = std::ranges::find(FeatureNames, TargetFeature, &std::pair<std::string_view, Feature>::second);
+
+        return Known != FeatureNames.end() ? Known->first : std::string_view{};
+    }
+
+    std::optional<Feature> FeatureFromKey(std::string_view Key)
+    {
+        const auto Known = std::ranges::find(FeatureNames, Key, &std::pair<std::string_view, Feature>::first);
+
+        return Known != FeatureNames.end() ? std::optional{ Known->second } : std::nullopt;
+    }
+
+    std::vector<FeatureReport> Report(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
+    {
+        std::vector<FeatureReport> Reports;
+
+        if (!Base)
+            return Reports;
+
+        std::shared_lock Lock{ PlayerLock };
+
+        for (const auto& Named : FeatureNames)
+        {
+            const auto Which = Named.second;
+            const auto Index = static_cast<std::size_t>(Which);
+            FeatureReport Made{ .Which = Which };
+            std::optional<RuleSource> Raw;
+
+            VisitFeatureList(Which, [&](const auto& List)
+            {
+                if (const auto Form = List.MatchForm(Base, Instance))
+                    Raw = List.SourceOf(Form);
+            });
+
+            bool OptionOn = true;
+
+            if (!Raw)
+            {
+                switch (Which)
+                {
+                    case Feature::AmmoCheck:
+                        Raw = RuleSource{ .Kind = SourceKind::EveryGun };
+                        OptionOn = Settings::AmmoCheckEveryGun();
+                        break;
+                    case Feature::BulletInChamber:
+                        Raw = RuleSource{ .Kind = SourceKind::PlayerOption };
+                        OptionOn = Settings::BulletInChamber();
+                        break;
+                    case Feature::DropUnspentAmmo:
+                        Raw = RuleSource{ .Kind = SourceKind::PlayerOption };
+                        OptionOn = Settings::DropUnspentAmmo();
+                        break;
+                    case Feature::ManualReload:
+                        Raw = RuleSource{ .Kind = SourceKind::PlayerOption };
+                        OptionOn = Settings::ManualReload();
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            if (!Raw)
+            {
+                Reports.push_back(std::move(Made));
+                continue;
+            }
+
+            RuleSource Shown = *Raw;
+            Made.State = OptionOn ? FeatureState::On : FeatureState::OptionOff;
+
+            if (const auto Form = ExclusionRules[Index].MatchForm(Base, Instance))
+            {
+                Made.State = FeatureState::ExcludedByMod;
+                Shown = ExclusionRules[Index].SourceOf(Form);
+            }
+            else if (const auto PlayerForm = PlayerExclusionRules[Index].MatchForm(Base, Instance))
+            {
+                const auto Excluder = static_cast<const RE::TESForm*>(PlayerForm);
+                Made.State = FeatureState::ExcludedByPlayer;
+                Shown = RuleSource{ .Kind = Excluder->Is<RE::BGSKeyword>() ? SourceKind::Keyword : SourceKind::Weapon, .Name = FormName(*Excluder) };
+            }
+
+            Made.Kind = Shown.Kind;
+            Made.File = std::move(Shown.File);
+            Made.Name = std::move(Shown.Name);
+            Reports.push_back(std::move(Made));
+        }
+
+        return Reports;
+    }
+
+    std::vector<const RE::BGSKeyword*> TargetKeywords(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
+    {
+        std::vector<const RE::BGSKeyword*> Keywords;
+
+        if (!Base)
+            return Keywords;
+
+        const auto Add = [&](RE::BGSKeyword* Keyword)
+        {
+            if (!Keyword || std::ranges::find(Keywords, Keyword) != Keywords.end())
+                return RE::BSContainer::ForEachResult::kContinue;
+
+            const auto EditorID = Keyword->GetFormEditorID();
+            const bool Anims = EditorID && _strnicmp(EditorID, "Anims", 5) == 0;
+
+            if ((Anims || KeywordUsed(Keyword)) && FileAndLocalID(*Keyword))
+                Keywords.push_back(Keyword);
+
+            return RE::BSContainer::ForEachResult::kContinue;
+        };
+
+        Base->ForEachKeyword(Add);
+
+        if (Instance && Instance->keywords)
+            Instance->keywords->ForEachKeyword(Add);
+
+        return Keywords;
+    }
+
+    bool TogglePlayerExclusion(const RE::TESForm* Target, Feature TargetFeature, RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
+    {
+        if (!Target || !Base || TargetFeature >= Feature::Count)
+            return false;
+
+        std::unique_lock Lock{ PlayerLock };
+
+        if (PlayerExclusionRules[static_cast<std::size_t>(TargetFeature)].Match(Base, Instance))
+        {
+            for (auto& Entry : PlayerData)
+            {
+                if (Hits(Entry, Base, Instance))
+                    std::erase(Entry.Features, TargetFeature);
+            }
+
+            REX::INFO("Player exclusions: {} back on for {:08X}", FeatureKey(TargetFeature), Base->GetFormID());
+        }
+        else
+        {
+            const auto Origin = FileAndLocalID(*Target);
+
+            if (!Origin)
+                return false;
+
+            auto Entry = std::ranges::find_if(PlayerData, [&](const PlayerExclusion& Known) { return Known.Form == Target; });
+
+            if (Entry == PlayerData.end())
+            {
+                PlayerData.push_back({ .Plugin = Origin->first, .LocalID = Origin->second, .Keyword = Target->Is<RE::BGSKeyword>(), .Form = Target });
+                Entry = std::prev(PlayerData.end());
+            }
+
+            if (std::ranges::find(Entry->Features, TargetFeature) == Entry->Features.end())
+            {
+                Entry->Features.push_back(TargetFeature);
+                std::ranges::sort(Entry->Features);
+            }
+
+            REX::INFO("Player exclusions: {} excluded for {} {:08X}", FeatureKey(TargetFeature), Entry->Keyword ? "keyword" : "weapon", Target->GetFormID());
+        }
+
+        std::erase_if(PlayerData, [](const PlayerExclusion& Entry) { return Entry.Features.empty(); });
+        RebuildPlayerRules();
+        SavePlayerExclusions();
+
+        return true;
+    }
+
+    std::vector<PlayerExclusion> PlayerExclusions()
+    {
+        std::shared_lock Lock{ PlayerLock };
+
+        return PlayerData;
+    }
+
+    bool RemovePlayerExclusion(std::size_t Index, std::optional<Feature> TargetFeature)
+    {
+        std::unique_lock Lock{ PlayerLock };
+
+        if (Index >= PlayerData.size())
+            return false;
+
+        if (TargetFeature)
+            std::erase(PlayerData[Index].Features, *TargetFeature);
+        else
+            PlayerData[Index].Features.clear();
+
+        REX::INFO("Player exclusions: {} removed from {} 0x{:06X} ({})", TargetFeature ? FeatureKey(*TargetFeature) : "everything"sv,
+            PlayerData[Index].Plugin, PlayerData[Index].LocalID, PlayerData[Index].Keyword ? "keyword" : "weapon");
+
+        std::erase_if(PlayerData, [](const PlayerExclusion& Entry) { return Entry.Features.empty(); });
+        RebuildPlayerRules();
+        SavePlayerExclusions();
+
+        return true;
     }
 }

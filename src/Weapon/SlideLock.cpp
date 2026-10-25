@@ -26,6 +26,7 @@ namespace
     bool Seen{ false };
     RE::TESObjectWEAP* LastBase{ nullptr };
     RE::TESObjectWEAP::InstanceData* LastInstance{ nullptr };
+    std::uint32_t LastGeneration{ 0 };
     std::optional<WeaponConfig::SlideLockRule> Rule;
     float Progress{ 0.0f };
     bool WasLocked{ false };
@@ -140,7 +141,8 @@ namespace SlideLock
 
         const auto Base = Weapon ? Weapon->Base : nullptr;
         const auto Instance = Weapon ? Weapon->Instance : nullptr;
-        const bool Changed = !Seen || Base != LastBase || Instance != LastInstance;
+        const bool WeaponChanged = !Seen || Base != LastBase || Instance != LastInstance;
+        const bool Changed = WeaponChanged || LastGeneration != WeaponConfig::Generation();
 
         if (Changed)
         {
@@ -148,8 +150,11 @@ namespace SlideLock
             Seen = true;
             LastBase = Base;
             LastInstance = Instance;
+            LastGeneration = WeaponConfig::Generation();
             Rule = Base ? WeaponConfig::MatchSlideLock(Base, Instance) : std::nullopt;
-            ReloadActive = false;
+
+            if (WeaponChanged)
+                ReloadActive = false;
 
             if (Rule)
                 REX::INFO("Slide lock on for {:08X}", Base->GetFormID());

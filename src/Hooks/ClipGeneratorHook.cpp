@@ -17,10 +17,12 @@
 #include "Arm/ArmSpace.h"
 #include "Weapon/AimDownSight.h"
 #include "Settings/Settings.h"
+#include "Sprint/TacticalSprint.h"
 
 namespace
 {
     constexpr std::size_t ActivateSlot = 0x7;
+    constexpr std::size_t UpdateSlot = 0x8;
     constexpr std::size_t DeactivateSlot = 0xA;
 
     constexpr std::ptrdiff_t ClipAnimationControlOffset = 0xD0;
@@ -146,6 +148,22 @@ namespace
         inline static REL::Relocation<decltype(Thunk)> Original;
     };
 
+    struct Update
+    {
+        static void Thunk(void* Clip, const void* Context, float Delta)
+        {
+            if (TacticalSprint::Active() && IsPlayerCharacter(Context ? Read<const void*>(Context, 0) : nullptr))
+            {
+                if (const auto Name = reinterpret_cast<const char*>(Read<std::uintptr_t>(Clip, NodeNameOffset) & ~std::uintptr_t{ 1 }))
+                    Delta *= TacticalSprint::ClipTimeScale(Name);
+            }
+
+            Original(Clip, Context, Delta);
+        }
+
+        inline static REL::Relocation<decltype(Thunk)> Original;
+    };
+
     struct Deactivate
     {
         static void Thunk(void* Clip, const void* Context)
@@ -200,6 +218,7 @@ namespace Hooks
         }
 
         Activate::Original = Vtable.write_vfunc(ActivateSlot, Activate::Thunk);
+        Update::Original = Vtable.write_vfunc(UpdateSlot, Update::Thunk);
         Deactivate::Original = Vtable.write_vfunc(DeactivateSlot, Deactivate::Thunk);
         REX::INFO("hkbClipGenerator hook installed");
     }

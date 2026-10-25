@@ -13,6 +13,7 @@
 */
 
 #include "WeaponHUD.h"
+#include "AmmoCheckDisplay.h"
 #include "HUDValues.h"
 #include "Core/EquippedWeapon.h"
 #include "Settings/Settings.h"
@@ -42,7 +43,11 @@ namespace
     constexpr std::uint32_t MaxShaderChildren = 64;
 
     constexpr auto Movie = "MWB_WeaponHUD.swf";
+    constexpr auto LoaderName = "MWB_WeaponHUDLoader";
     constexpr auto ExplosiveRow = "MWB_ExplosiveRow";
+    constexpr int MaxReinjections = 8;
+    constexpr float TwipsWidth = 10000.0f;
+    constexpr float TwipsPerPixel = 20.0f;
 
     constexpr int GrenadeIconFrame = 1;
     constexpr int MineIconFrame = 2;
@@ -82,6 +87,7 @@ namespace
         Value Widget;
         bool Failed{ false };
         bool Active{ false };
+        int Reinjections{ 0 };
 
         WeaponText Weapon;
         Counts ShownCounts;
@@ -89,6 +95,7 @@ namespace
 
         std::string LastExplosiveDebug;
         std::string LastWidgetDebug;
+        std::string LastCounterDebug;
 
         const RE::TESObjectWEAP* NameBase{ nullptr };
         std::string NameCustom;
@@ -175,6 +182,13 @@ namespace
         return Parent.IsDisplayObject() && Parent.Invoke("getChildByName", &Out, &NameArg, 1) && Out.IsDisplayObject();
     }
 
+    [[nodiscard]] bool LoaderAttached(Value& Counter)
+    {
+        Value Child;
+
+        return HUD.Loader.IsDisplayObject() && FindChild(Counter, LoaderName, Child) && ClipOf(Child) == ClipOf(HUD.Loader);
+    }
+
     void HideVanillaAmmo(const Value& Counter)
     {
         Hide(Counter, "ClipCount_tf");
@@ -241,10 +255,22 @@ namespace
         HUD.Widget.SetMember("lastError", "");
     }
 
-    void Inject(Value& Counter)
+    void Inject(Value& Counter, bool Again)
     {
         Abandon(HUD.Loader);
         Abandon(HUD.Widget);
+
+        if (!Again)
+            HUD.Reinjections = 0;
+        else if (++HUD.Reinjections > MaxReinjections)
+        {
+            REX::WARN("Weapon HUD: {} keeps leaving the ammo counter; the vanilla counter stays", Movie);
+            HUD.Failed = true;
+            return;
+        }
+        else
+            REX::WARN("Weapon HUD: {} is no longer in the ammo counter; loading it again", Movie);
+
         HUD.AmmoClip = ClipOf(Counter);
         HUD.Movie = MovieOf(Counter);
         HUD.Failed = false;
@@ -267,10 +293,11 @@ namespace
         CounterMovie->CreateObject(&Request, "flash.net.URLRequest", &MovieURL, 1);
         CounterMovie->CreateObject(&HUD.Loader, "flash.display.Loader");
 
-        if (!Request.IsObject() || !HUD.Loader.IsDisplayObject() || !HUD.Loader.Invoke("load", nullptr, &Request, 1) ||
-            !Counter.Invoke("addChild", nullptr, &HUD.Loader, 1))
+        if (!Request.IsObject() || !HUD.Loader.IsDisplayObject() || !HUD.Loader.SetMember("name", LoaderName) ||
+            !HUD.Loader.Invoke("load", nullptr, &Request, 1) || !Counter.Invoke("addChild", nullptr, &HUD.Loader, 1))
         {
             REX::WARN("Weapon HUD: could not load {} into the ammo counter; the vanilla counter stays", Movie);
+            Abandon(HUD.Loader);
             HUD.Failed = true;
             return;
         }
@@ -290,6 +317,7 @@ namespace
             return false;
 
         HUD.Widget = Content;
+        HUD.Reinjections = 0;
 
         HideVanillaAmmo(Counter);
         REX::INFO("Weapon HUD: {} loaded; the vanilla ammo counter is hidden", Movie);
@@ -497,6 +525,51 @@ namespace
         return Text;
     }
 
+    [[nodiscard]] std::optional<double> NumberOf(const Value& Object, const char* Member)
+    {
+        Value Number;
+
+        return Object.GetMember(Member, &Number) && Number.IsNumber() ? std::optional{ Number.GetNumber() } : std::nullopt;
+    }
+
+    void PublishCounterPoint(Value& Counter)
+    {
+        const auto CounterMovie = MovieOf(Counter);
+        Value      Stage;
+        Value      Bounds;
+
+        if (!CounterMovie || !Counter.GetMember("stage", &Stage) || !Stage.IsObject() || !Counter.Invoke("getBounds", &Bounds, &Stage, 1) ||
+            !Bounds.IsObject())
+            return;
+
+        const auto X = NumberOf(Bounds, "x");
+        const auto Y = NumberOf(Bounds, "y");
+        const auto Height = NumberOf(Bounds, "height");
+        auto       Screen = CounterMovie->GetVisibleFrameRect();
+        const float Scale = Screen.x2 - Screen.x1 > TwipsWidth ? 1.0f / TwipsPerPixel : 1.0f;
+        const float Width = (Screen.x2 - Screen.x1) * Scale;
+        const float Tall = (Screen.y2 - Screen.y1) * Scale;
+
+        if (!X || !Y || !Height || Width <= 0.0f || Tall <= 0.0f)
+            return;
+
+        const float PointX = (static_cast<float>(*X) - Screen.x1 * Scale) / Width;
+        const float PointY = (static_cast<float>(*Y + *Height / 2.0) - Screen.y1 * Scale) / Tall;
+        AmmoCheckDisplay::SetCounterPoint(PointX, PointY);
+
+        if (Settings::VerboseLog())
+        {
+            auto Debug = std::format("bounds at ({:.0f}, {:.0f}), height {:.0f}; visible frame ({:.0f}, {:.0f})-({:.0f}, {:.0f}) x{:.2f} -> ({:.3f}, {:.3f})", *X,
+                *Y, *Height, Screen.x1, Screen.y1, Screen.x2, Screen.y2, Scale, PointX, PointY);
+
+            if (Debug != HUD.LastCounterDebug)
+            {
+                REX::INFO("Weapon HUD: ammo counter {}", Debug);
+                HUD.LastCounterDebug = std::move(Debug);
+            }
+        }
+    }
+
     void OnAmmoCounterUpdated(void* Component)
     {
         auto& Counter = AsValue(Component);
@@ -504,18 +577,32 @@ namespace
         if (!Counter.IsDisplayObject())
             return;
 
+        PublishCounterPoint(Counter);
+
+        if (!Settings::WeaponHUD() && !HUD.Active)
+            return;
+
         const bool SameClip = ClipOf(Counter) == HUD.AmmoClip && MovieOf(Counter) == HUD.Movie;
+        const bool Attached = SameClip && (HUD.Failed || LoaderAttached(Counter));
 
         if (!Settings::WeaponHUD())
         {
-            if (SameClip && HUD.Active)
+            if (Attached)
                 Deactivate(Counter);
+            else
+            {
+                Abandon(HUD.Loader);
+                Abandon(HUD.Widget);
+                HUD.AmmoClip = nullptr;
+                HUD.Movie = nullptr;
+                HUD.Active = false;
+            }
 
             return;
         }
 
-        if (!SameClip)
-            Inject(Counter);
+        if (!Attached)
+            Inject(Counter, SameClip);
 
         if (HUD.Failed || !WidgetReady(Counter))
             return;

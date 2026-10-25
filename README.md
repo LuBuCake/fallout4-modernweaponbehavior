@@ -9,15 +9,18 @@ This repository holds the source code of the plugin (`MWB.dll`) as released on N
 
 * Looped reload the way Bethesda does it in Fallout 76 and Starfield: one shell per pass, blended passes, cancel at the end of the pass.
 * Tactical reload, sighted reload, sprint transitions and sprinting equips, chosen per weapon through JSON files, by weapon, keyword or form list.
-* Inspect, ammo check (with an on-screen magazine readout), special attack and fire mode switch, callable from Papyrus and MCM hotkeys.
+* Inspect, ammo check (with an on-screen magazine readout, optionally on every gun), special attack and fire mode switch, callable from Papyrus and MCM hotkeys.
 * Arm-only animations with weapon lock (guns and melee weapons), slide lock (with lock and release sounds and nodes hidden while locked) and per fire mode weapon bone poses.
 * Animation annotations to fire ammo, use items and cast spells from any animation.
 * Weapon HUD module (with the names given at the workbench), bullet in the chamber, drop unspent ammo on reload and manual reload (the last three with per weapon exclusions).
 * Hold to block for melee and fists, and firing while sprinting in first person.
+* Tactical sprint and slide in first person, as in Call of Duty, with optional clips per weapon and a slide sound per floor material.
+* Last shot clips: a fire animation of its own for the last round in the magazine, from the hip and from the sights.
 * Aim sway and hold breath, the game's own, for regular scopes, 3D scopes and sights without a scope, each with its own setting.
 * Aim down sight in and out animations timed to the weapon's sight speed, and a setting for the sighted fire jiggle.
 * Animation clips missing from the AnimTextData still load.
 * A setting to play the full equip animation instead of the quick one when switching weapons from favorites.
+* An exclusion panel inside the MCM: players take any feature away from the weapon in hand, or from every weapon with one of its keywords, and it applies at once.
 
 ## Supported Runtimes
 
@@ -89,9 +92,9 @@ src/
   Melee/       hold to block
   Papyrus/     native functions of the MWB script
   Reload/      looped, sighted and tactical reload, bullet in the chamber, drop unspent ammo, manual reload, bolt charge resync
-  Settings/    MWB.ini, MWB_Custom.ini and the MCM settings
-  Sprint/      sprint transitions, third person sprint camera and firing while sprinting
-  Weapon/      fire mode switch and pose, slide lock, weapon bones, scope sway, aim down sight, sighted fire jiggle, full equip and aiming right after a save loads
+  Settings/    MWB.ini, MWB_Custom.ini, the MCM settings and the MCM exclusion panel
+  Sprint/      sprint transitions, third person sprint camera, firing while sprinting, tactical sprint and slide
+  Weapon/      fire mode switch and pose, slide lock, weapon bones, scope sway, aim down sight, sighted fire jiggle, full equip, last shot clips and aiming right after a save loads
 ```
 
 ## License

@@ -13,6 +13,7 @@
 */
 
 #include "Papyrus.h"
+#include "HUD/AmmoCheckDisplay.h"
 #include "Settings/Settings.h"
 
 #include <variant>
@@ -41,6 +42,9 @@ namespace
 
     bool AmmoCheck(GlobalFunctionSelf)
     {
+        if (const auto Shown = AmmoCheckDisplay::ShowWithoutAnimation())
+            return *Shown;
+
         return Send("MWB_AmmoCheck");
     }
 

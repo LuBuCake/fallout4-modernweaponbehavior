@@ -21,6 +21,7 @@ namespace
 {
     RE::TESObjectWEAP*               Base{ nullptr };
     RE::TESObjectWEAP::InstanceData* Instance{ nullptr };
+    std::uint32_t                    SeenGeneration{ 0 };
     bool                             Matched{ false };
     bool                             WarnedMissing{ false };
 
@@ -86,11 +87,17 @@ namespace
         const auto CurrentBase = Weapon ? Weapon->Base : nullptr;
         const auto CurrentInstance = Weapon ? Weapon->Instance : nullptr;
 
-        if (CurrentBase != Base || CurrentInstance != Instance)
+        const bool WeaponChanged = CurrentBase != Base || CurrentInstance != Instance;
+
+        if (WeaponChanged || SeenGeneration != WeaponConfig::Generation())
         {
             Base = CurrentBase;
             Instance = CurrentInstance;
-            ReloadActive = false;
+            SeenGeneration = WeaponConfig::Generation();
+
+            if (WeaponChanged)
+                ReloadActive = false;
+
             const bool CurrentMatch = CurrentBase && WeaponConfig::MatchSighted(CurrentBase, CurrentInstance);
 
             if (CurrentMatch != Matched)

@@ -52,6 +52,7 @@ namespace
 
     RE::TESObjectWEAP*               Base{ nullptr };
     RE::TESObjectWEAP::InstanceData* Instance{ nullptr };
+    std::uint32_t                    SeenGeneration{ 0 };
     bool                             Matched{ false };
     bool                             WarnedGraph{ false };
 
@@ -60,10 +61,11 @@ namespace
         const auto CurrentBase = Weapon ? Weapon->Base : nullptr;
         const auto CurrentInstance = Weapon ? Weapon->Instance : nullptr;
 
-        if (CurrentBase != Base || CurrentInstance != Instance)
+        if (CurrentBase != Base || CurrentInstance != Instance || SeenGeneration != WeaponConfig::Generation())
         {
             Base = CurrentBase;
             Instance = CurrentInstance;
+            SeenGeneration = WeaponConfig::Generation();
             const bool CurrentMatch = CurrentBase && WeaponConfig::MatchAimDownSight(CurrentBase, CurrentInstance);
 
             if (CurrentMatch != Matched)

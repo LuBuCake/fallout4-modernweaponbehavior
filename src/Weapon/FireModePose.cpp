@@ -25,6 +25,7 @@ namespace
     bool Seen{ false };
     RE::TESObjectWEAP* LastBase{ nullptr };
     RE::TESObjectWEAP::InstanceData* LastInstance{ nullptr };
+    std::uint32_t LastGeneration{ 0 };
     std::optional<WeaponConfig::FireModeRule> Rule;
     bool WasAutomatic{ false };
     float Progress{ 0.0f };
@@ -52,13 +53,14 @@ namespace FireModePose
 
         const auto Base = Weapon ? Weapon->Base : nullptr;
         const auto Instance = Weapon ? Weapon->Instance : nullptr;
-        const bool Changed = !Seen || Base != LastBase || Instance != LastInstance;
+        const bool Changed = !Seen || Base != LastBase || Instance != LastInstance || LastGeneration != WeaponConfig::Generation();
 
         if (Changed)
         {
             Seen = true;
             LastBase = Base;
             LastInstance = Instance;
+            LastGeneration = WeaponConfig::Generation();
             Rule = Base ? WeaponConfig::MatchFireMode(Base, Instance) : std::nullopt;
             const bool Posed = Rule && (!Rule->AutoBones.empty() || !Rule->SingleBones.empty());
 

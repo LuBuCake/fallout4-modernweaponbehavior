@@ -26,6 +26,8 @@ namespace Settings
 
     [[nodiscard]] bool BulletInChamber();
 
+    [[nodiscard]] bool BulletInChamberTacticalOnly();
+
     [[nodiscard]] bool DropUnspentAmmo();
 
     [[nodiscard]] bool ManualReload();
@@ -35,6 +37,8 @@ namespace Settings
     [[nodiscard]] bool FireModeSwitch();
 
     [[nodiscard]] bool WeaponHUD();
+
+    [[nodiscard]] bool AmmoCheckEveryGun();
 
     [[nodiscard]] bool ThirdPersonSprintFOV();
 
@@ -51,4 +55,20 @@ namespace Settings
     [[nodiscard]] bool SightedFireJiggle();
 
     [[nodiscard]] bool FullEquipOnSwitch();
+
+    [[nodiscard]] bool TacticalSprint();
+
+    [[nodiscard]] bool Slide();
+
+    [[nodiscard]] float TacticalSprintSpeed();
+
+    [[nodiscard]] float TacticalSprintActionPoints();
+
+    [[nodiscard]] float TacticalSprintAnimation();
+
+    [[nodiscard]] float SlideDuration();
+
+    [[nodiscard]] float SlideCommittedTime();
+
+    [[nodiscard]] float SlideSpeed();
 }

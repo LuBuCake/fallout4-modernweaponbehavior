@@ -16,10 +16,16 @@
 #include "Config/WeaponConfig.h"
 #include "Core/EquippedWeapon.h"
 #include "Settings/Settings.h"
+#include "Sprint/Slide.h"
+#include "Sprint/TacticalSprint.h"
 
 namespace
 {
     constexpr std::int32_t WPNSprintStartStateID = 2;
+    constexpr std::int32_t WPNSprintTacticalStartStateID = 3;
+    constexpr std::int32_t WPNSprintTacticalStateID = 4;
+    constexpr std::int32_t SprintStopClip = 1;
+    constexpr std::int32_t SprintTacticalStopClip = 2;
     constexpr std::int32_t EquipWalking = 0;
     constexpr std::int32_t EquipSprinting = 1;
     constexpr std::int32_t EquipSprintingClip = 2;
@@ -32,6 +38,7 @@ namespace
     {
         std::int32_t StartState{ 0 };
         std::int32_t Stop{ 0 };
+        std::int32_t TacticalLoop{ 0 };
 
         bool operator==(const Wanted&) const = default;
     };
@@ -51,6 +58,7 @@ namespace
 
     RE::TESObjectWEAP* LastBase{ nullptr };
     RE::TESObjectWEAP::InstanceData* LastInstance{ nullptr };
+    std::uint32_t LastGeneration{ 0 };
     std::optional<WeaponConfig::SprintRule> LastRule;
     bool WarnedMissing{ false };
 
@@ -66,10 +74,11 @@ namespace
         const auto Base = Weapon ? Weapon->Base : nullptr;
         const auto Instance = Weapon ? Weapon->Instance : nullptr;
 
-        if (Base != LastBase || Instance != LastInstance)
+        if (Base != LastBase || Instance != LastInstance || LastGeneration != WeaponConfig::Generation())
         {
             LastBase = Base;
             LastInstance = Instance;
+            LastGeneration = WeaponConfig::Generation();
 
             if (Settings::VerboseLog())
             {
@@ -83,8 +92,11 @@ namespace
             {
                 if (Rule)
                 {
-                    REX::INFO("Sprint transitions on for {:08X}: start {}, stop {}, equip {}", Base->GetFormID(),
-                        Rule->Start ? "on" : "off", Rule->Stop ? "on" : "off", Rule->Equip ? "on" : "off");
+                    const auto OnOff = [](bool Value) { return Value ? "on" : "off"; };
+
+                    REX::INFO("Sprint transitions on for {:08X}: start {}, stop {}, equip {}, tactical start {}, tactical {}, tactical stop {}",
+                        Base->GetFormID(), OnOff(Rule->Start), OnOff(Rule->Stop), OnOff(Rule->Equip), OnOff(Rule->TacticalStart), OnOff(Rule->Tactical),
+                        OnOff(Rule->TacticalStop));
                 }
                 else
                 {
@@ -98,14 +110,27 @@ namespace
         return LastRule;
     }
 
-    [[nodiscard]] Wanted WantedFor(const std::optional<WeaponConfig::SprintRule>& Rule, const Hold& HoldState, bool Sprinting)
+    [[nodiscard]] Wanted WantedFor(const std::optional<WeaponConfig::SprintRule>& Rule, const Hold& HoldState, bool Sprinting, bool Tactical)
     {
         if (!Rule)
             return {};
 
+        const std::int32_t Stop = Rule->Stop ? SprintStopClip : 0;
+        const std::int32_t TacticalLoop = Rule->Tactical ? 1 : 0;
+
+        if (Tactical && (Rule->TacticalStart || Rule->Tactical))
+        {
+            return {
+                .StartState = Rule->TacticalStart && !HoldState.SkipStart ? WPNSprintTacticalStartStateID : Rule->Tactical ? WPNSprintTacticalStateID : 0,
+                .Stop = Rule->TacticalStop ? SprintTacticalStopClip : Stop,
+                .TacticalLoop = TacticalLoop,
+            };
+        }
+
         return {
             .StartState = Rule->Start && !HoldState.SkipStart && !Sprinting ? WPNSprintStartStateID : 0,
-            .Stop = Rule->Stop ? 1 : 0,
+            .Stop = Tactical && Rule->TacticalStop ? SprintTacticalStopClip : Stop,
+            .TacticalLoop = TacticalLoop,
         };
     }
 
@@ -147,6 +172,13 @@ namespace
 
 namespace Sprint
 {
+    std::optional<WeaponConfig::SprintRule> CurrentRule()
+    {
+        std::scoped_lock Guard{ Lock };
+
+        return LastRule;
+    }
+
     void OnAnimationEvent(const RE::BSFixedString& Tag)
     {
         if (Tag.empty())
@@ -205,6 +237,7 @@ namespace Sprint
 
         static const RE::BSFixedString StartVariable{ "iMWB_SprintStartState" };
         static const RE::BSFixedString StopVariable{ "iMWB_SprintStop" };
+        static const RE::BSFixedString TacticalLoopVariable{ "iMWB_SprintTacticalLoop" };
         static const RE::BSFixedString EquipStartVariable{ "iMWB_EquipStartState" };
         static const RE::BSFixedString SyncSprintVariable{ "iSyncSprintState" };
 
@@ -236,7 +269,10 @@ namespace Sprint
 
             const auto& Rule = RuleFor(Weapon);
             SprintingFor = Sprinting == 1 ? SprintingFor + Delta : 0.0f;
-            WantedValues = WantedFor(Rule, CurrentHold, SprintingFor >= SprintSettled);
+            WantedValues = WantedFor(Rule, CurrentHold, SprintingFor >= SprintSettled, TacticalSprint::Active());
+
+            if (Slide::Active() && Slide::PlaysClip())
+                WantedValues.Stop = 0;
             EquipClip = Rule && Rule->Equip;
         }
 
@@ -245,6 +281,7 @@ namespace Sprint
 
         bool Known = Sync(Player, StartVariable, WantedValues.StartState);
         Known = Sync(Player, StopVariable, WantedValues.Stop) && Known;
+        Known = Sync(Player, TacticalLoopVariable, WantedValues.TacticalLoop) && Known;
 
         if (!Known && WantedValues != Wanted{} && !WarnedMissing)
         {

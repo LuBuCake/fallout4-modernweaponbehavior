@@ -39,8 +39,12 @@
 #include "Reload/ManualReload.h"
 #include "Reload/SightedReload.h"
 #include "Reload/TacticalReload.h"
+#include "Settings/ExclusionPanel.h"
 #include "Settings/Settings.h"
+#include "Sprint/Slide.h"
 #include "Sprint/SprintFire.h"
+#include "Sprint/SprintSpeeds.h"
+#include "Sprint/TacticalSprint.h"
 #include "Weapon/AimAfterLoad.h"
 #include "Weapon/AimDownSight.h"
 #include "Weapon/FireMode.h"
@@ -83,6 +87,7 @@ namespace Core
     {
         Settings::Load();
         Papyrus::Register();
+        ExclusionPanel::Register();
         AmmoFire::InstallEditorIDHook();
         MagicAnnotations::InstallEditorIDHooks();
         Hooks::InstallSubgraphAnimationHook();
@@ -115,6 +120,9 @@ namespace Core
         ScopeSway::Install();
         HoldBlock::Install();
         SprintFire::Install();
+        TacticalSprint::Install();
+        Slide::Install();
+        SprintSpeeds::Install();
         WeaponHUD::Install();
         Settings::InstallMenuWatcher();
     }
@@ -137,6 +145,8 @@ namespace Core
         ScopeSway::Reset();
         HoldBlock::Reset();
         SprintFire::Reset();
+        TacticalSprint::Reset();
+        Slide::Reset();
         AimAfterLoad::Reset();
     }
 
