@@ -23,6 +23,7 @@
 #include "Reload/TacticalReload.h"
 #include "Sprint/Slide.h"
 #include "Sprint/SprintFire.h"
+#include "Weapon/AimAfterLoad.h"
 #include "Weapon/FireLast.h"
 #include "Weapon/FireMode.h"
 #include "Weapon/FullEquip.h"
@@ -103,8 +104,21 @@ namespace
             SprintFire::OnEventSending(*SentEvent);
             FireLast::OnEventSending(*SentEvent);
             const auto DrawState = FullEquip::Begin(This, *SentEvent);
-            const bool Accepted = Original(This, *SentEvent);
+            bool Accepted = Original(This, *SentEvent);
             FullEquip::End(This, DrawState);
+
+            if (!Accepted && AimAfterLoad::Refused(*SentEvent))
+            {
+                Accepted = Original(This, AimAfterLoad::OpenEvent()) && Original(This, *SentEvent);
+                AimAfterLoad::Retried(Accepted);
+            }
+
+            if (!Accepted)
+            {
+                if (const auto FallbackEvent = ArmAnimations::RefusedFallback(*SentEvent))
+                    Accepted = Original(This, *FallbackEvent);
+            }
+
             BoltChargeResync::OnEventSent(*SentEvent, Accepted);
             DropUnspentAmmo::OnEventSent(*SentEvent, Accepted);
             ArmSpace::OnEventSent(*SentEvent, Accepted);

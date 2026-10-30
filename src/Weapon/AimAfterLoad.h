@@ -20,5 +20,11 @@ namespace AimAfterLoad
 
     void Tick(RE::PlayerCharacter* Player, float Delta);
 
+    [[nodiscard]] bool Refused(const RE::BSFixedString& Event);
+
+    [[nodiscard]] const RE::BSFixedString& OpenEvent();
+
+    void Retried(bool Accepted);
+
     void Reset();
 }

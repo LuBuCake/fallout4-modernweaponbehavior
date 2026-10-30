@@ -25,6 +25,7 @@
 #include "Hooks/AnimationEventHook.h"
 #include "Hooks/ClipGeneratorHook.h"
 #include "Hooks/GraphGenerateHook.h"
+#include "Hooks/IdleStartHook.h"
 #include "Hooks/InputHandler.h"
 #include "Hooks/NotifyAnimationGraphHook.h"
 #include "Hooks/QueuedEventHook.h"
@@ -37,6 +38,7 @@
 #include "Reload/DropUnspentAmmo.h"
 #include "Reload/LoopReload.h"
 #include "Reload/ManualReload.h"
+#include "Reload/SightedBoltCharge.h"
 #include "Reload/SightedReload.h"
 #include "Reload/TacticalReload.h"
 #include "Settings/ExclusionPanel.h"
@@ -108,6 +110,7 @@ namespace Core
         Hooks::InstallActorAnimationEventHook();
         Hooks::InstallNotifyAnimationGraphHook();
         Hooks::InstallQueuedEventHook();
+        Hooks::InstallIdleStartHook();
         Hooks::InstallClipGeneratorHook();
         Hooks::InstallUpdateAnimationHook();
         Hooks::InstallActorUpdateAnimationHook();
@@ -133,6 +136,7 @@ namespace Core
         Hooks::ForgetClips();
         MagicAnnotations::Reset();
         SightedReload::Reset();
+        SightedBoltCharge::Reset();
         AimDownSight::Reset();
         ArmAnimations::Reset();
         ArmSpace::Reset();

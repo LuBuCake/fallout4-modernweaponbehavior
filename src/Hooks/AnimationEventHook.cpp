@@ -20,6 +20,7 @@
 #include "Reload/BulletInChamber.h"
 #include "Reload/DropUnspentAmmo.h"
 #include "Reload/LoopReload.h"
+#include "Reload/SightedBoltCharge.h"
 #include "Reload/SightedReload.h"
 #include "Settings/Settings.h"
 #include "Sprint/SprintFire.h"
@@ -65,6 +66,9 @@ namespace
             if (SightedReload::OnAnimationEvent(Event))
                 return RE::BSEventNotifyControl::kContinue;
 
+            if (SightedBoltCharge::OnAnimationEvent(Event))
+                return RE::BSEventNotifyControl::kContinue;
+
             const auto Result = Original(This, Event, EventSource);
             Reload::AfterGameHandles(ReloadAction);
             Sprint::OnAnimationEvent(Event.tag);
@@ -72,7 +76,13 @@ namespace
             SlideLock::OnAnimationEvent(Event.tag);
             AmmoFire::OnAnimationEvent(SinkOwner(This), Event);
             MagicAnnotations::OnAnimationEvent(SinkOwner(This), Event);
-            ArmAnimations::OnAnimationEvent(Event.tag);
+
+            if (ArmAnimations::OnAnimationEvent(Event.tag))
+            {
+                const RE::BSAnimationGraphEvent Unload{ Event.holderID, ArmAnimations::Unload(), RE::BSFixedString{} };
+                Original(This, Unload, EventSource);
+            }
+
             FireMode::OnAnimationEvent(Event.tag);
             BulletInChamber::OnAnimationEvent(Event.tag);
             DropUnspentAmmo::OnAnimationEvent(Event.tag);

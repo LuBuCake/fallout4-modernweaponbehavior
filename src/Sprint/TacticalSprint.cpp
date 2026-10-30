@@ -88,7 +88,7 @@ namespace
 
         const auto Player = RE::PlayerCharacter::GetSingleton();
 
-        if (!Player || !Player->sprintToggled || !Sprinting(Player) || !InFirstPerson(Player))
+        if (!Player || !Player->sprintToggled || !Sprinting(Player) || !InFirstPerson(Player) || Player->IsJumping())
             return false;
 
         Running = true;
@@ -278,6 +278,12 @@ namespace TacticalSprint
         if (!InFirstPerson(Player))
         {
             End("third person");
+            return;
+        }
+
+        if (Player->IsJumping())
+        {
+            End("jump, back to the normal sprint");
             return;
         }
 

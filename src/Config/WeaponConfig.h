@@ -58,6 +58,8 @@ namespace WeaponConfig
     {
         bool Ready{ true };
         bool Sighted{ true };
+        bool FirstPerson{ true };
+        bool ThirdPerson{ false };
 
         bool operator==(const FireLastRule&) const = default;
     };

@@ -30,13 +30,19 @@ namespace
     {
         static bool Thunk(void* Graph, const RE::BSFixedString* Event, void* Arg3)
         {
-            if (Event && Hooks::IsPlayerGraph(Graph))
-            {
-                if (const auto FallbackEvent = ArmAnimations::Fallback(*Event))
-                    return Original(Graph, FallbackEvent, Arg3);
-            }
+            if (!Event || !Hooks::IsPlayerGraph(Graph))
+                return Original(Graph, Event, Arg3);
 
-            return Original(Graph, Event, Arg3);
+            if (const auto FallbackEvent = ArmAnimations::Fallback(*Event))
+                return Original(Graph, FallbackEvent, Arg3);
+
+            if (Original(Graph, Event, Arg3))
+                return true;
+
+            if (const auto FallbackEvent = ArmAnimations::RefusedFallback(*Event))
+                return Original(Graph, FallbackEvent, Arg3);
+
+            return false;
         }
 
         inline static REL::Relocation<SendSignature> Original;

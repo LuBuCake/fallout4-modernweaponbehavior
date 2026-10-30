@@ -41,6 +41,8 @@ namespace
     {
         std::optional<bool> Ready;
         std::optional<bool> Sighted;
+        std::optional<bool> FirstPerson;
+        std::optional<bool> ThirdPerson;
     };
 
     struct TacticalOptions
@@ -152,7 +154,7 @@ template <>
 struct glz::meta<FireLastOptions>
 {
     using T = FireLastOptions;
-    static constexpr auto value = object("ready", &T::Ready, "sighted", &T::Sighted);
+    static constexpr auto value = object("ready", &T::Ready, "sighted", &T::Sighted, "firstPerson", &T::FirstPerson, "thirdPerson", &T::ThirdPerson);
 };
 
 template <>
@@ -675,11 +677,20 @@ namespace
 
     [[nodiscard]] std::optional<FireLastRule> MakeRule(const FireLastOptions& Options, std::string_view Where)
     {
-        const FireLastRule Rule{ .Ready = Options.Ready.value_or(true), .Sighted = Options.Sighted.value_or(true) };
+        const FireLastRule Rule{ .Ready = Options.Ready.value_or(true),
+                                 .Sighted = Options.Sighted.value_or(true),
+                                 .FirstPerson = Options.FirstPerson.value_or(true),
+                                 .ThirdPerson = Options.ThirdPerson.value_or(false) };
 
         if (!Rule.Ready && !Rule.Sighted)
         {
             REX::WARN("  {}: \"ready\" and \"sighted\" both false, it does nothing", Where);
+            return std::nullopt;
+        }
+
+        if (!Rule.FirstPerson && !Rule.ThirdPerson)
+        {
+            REX::WARN("  {}: \"firstPerson\" and \"thirdPerson\" both false, it does nothing", Where);
             return std::nullopt;
         }
 
@@ -899,7 +910,8 @@ namespace
     {
         const auto OnOff = [](bool Value) { return Value ? "on" : "off"; };
 
-        return std::format(", ready {}, sighted {}", OnOff(Rule.Ready), OnOff(Rule.Sighted));
+        return std::format(", ready {}, sighted {}, first person {}, third person {}", OnOff(Rule.Ready), OnOff(Rule.Sighted), OnOff(Rule.FirstPerson),
+                           OnOff(Rule.ThirdPerson));
     }
 
     [[nodiscard]] std::string Describe(const SightedRule&)

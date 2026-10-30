@@ -165,8 +165,8 @@ namespace
     };
 
     std::mutex Lock;
-    ArmClip Arm;
-    std::atomic<const void*> WatchedClip{ nullptr };
+    std::array<ArmClip, 2> Arms;
+    std::array<std::atomic<const void*>, 2> WatchedClips{};
     std::atomic<const void*> WatchedCharacter{ nullptr };
 
     std::optional<RE::BSFixedString> StopEvent;
@@ -187,11 +187,24 @@ namespace
 
     constexpr std::ptrdiff_t FirstPersonStateCamera = 0x50;
 
-    void Clear()
+    [[nodiscard]] std::size_t SlotOf(std::int16_t Collarbone)
     {
-        Arm = {};
-        WatchedClip = nullptr;
-        WatchedCharacter = nullptr;
+        return Collarbone == LeftCollarbone ? 0 : 1;
+    }
+
+    void Clear(std::size_t Slot)
+    {
+        Arms[Slot] = {};
+        WatchedClips[Slot] = nullptr;
+
+        if (!Arms[1 - Slot].Clip)
+            WatchedCharacter = nullptr;
+    }
+
+    void ClearAll()
+    {
+        Clear(0);
+        Clear(1);
     }
 
     [[nodiscard]] std::int16_t CollarboneOf(const void* Clip)
@@ -295,7 +308,7 @@ namespace
         return std::sqrt(A[0] * A[0] + A[1] * A[1] + A[2] * A[2]);
     }
 
-    void Correct(void* Output)
+    void Correct(ArmClip& Arm, void* Output)
     {
         const auto Tracks = Read<std::byte*>(Output, 0);
 
@@ -407,8 +420,11 @@ namespace ArmSpace
 
         const std::scoped_lock Guard{ Lock };
 
-        if (Arm.Clip && Arm.Character == Character)
-            Correct(Output);
+        for (auto& Arm : Arms)
+        {
+            if (Arm.Clip && Arm.Character == Character)
+                Correct(Arm, Output);
+        }
     }
 
     void Diagnose(RE::PlayerCharacter* Player)
@@ -422,6 +438,7 @@ namespace ArmSpace
 
         {
             const std::scoped_lock Guard{ Lock };
+            const auto& Arm = Arms[0].Clip ? Arms[0] : Arms[1];
             ShownClip = Arm.Clip ? Arm.Clip : VanillaClip;
 
             if (!ShownClip)
@@ -498,8 +515,9 @@ namespace ArmSpace
         {
             {
                 const std::scoped_lock Guard{ Lock };
-                Arm = { Clip, Character, Collarbone, -1.0f, false };
-                WatchedClip = Clip;
+                const auto Slot = SlotOf(Collarbone);
+                Arms[Slot] = { Clip, Character, Collarbone, -1.0f, false };
+                WatchedClips[Slot] = Clip;
                 WatchedCharacter = Character;
             }
 
@@ -533,32 +551,41 @@ namespace ArmSpace
             return;
         }
 
-        if (Clip != WatchedClip.load(std::memory_order_relaxed))
-            return;
+        for (std::size_t Slot = 0; Slot < Arms.size(); ++Slot)
+        {
+            if (Clip != WatchedClips[Slot].load(std::memory_order_relaxed))
+                continue;
 
-        const std::scoped_lock Guard{ Lock };
+            const std::scoped_lock Guard{ Lock };
 
-        if (Arm.Clip == Clip)
-            Clear();
+            if (Arms[Slot].Clip == Clip)
+                Clear(Slot);
+        }
     }
 
     void OnEventSent(const RE::BSFixedString& Event, bool Accepted)
     {
-        if (!Accepted || !StopEvent || Event != *StopEvent || !WatchedClip.load(std::memory_order_relaxed))
+        if (!Accepted || !StopEvent || Event != *StopEvent || !WatchedCharacter.load(std::memory_order_relaxed))
             return;
 
         const std::scoped_lock Guard{ Lock };
 
-        if (Arm.Clip && Arm.StopTime < 0.0f)
-            Arm.StopTime = Read<float>(Arm.Clip, ClipLocalTime);
+        for (auto& Arm : Arms)
+        {
+            if (Arm.Clip && Arm.StopTime < 0.0f)
+                Arm.StopTime = Read<float>(Arm.Clip, ClipLocalTime);
+        }
     }
 
     void OnCharactersChanged(std::span<const void* const> Characters)
     {
         const std::scoped_lock Guard{ Lock };
 
-        if (Arm.Character && std::ranges::find(Characters, Arm.Character) == Characters.end())
-            Clear();
+        for (std::size_t Slot = 0; Slot < Arms.size(); ++Slot)
+        {
+            if (Arms[Slot].Character && std::ranges::find(Characters, Arms[Slot].Character) == Characters.end())
+                Clear(Slot);
+        }
 
         if (VanillaCharacter && std::ranges::find(Characters, VanillaCharacter) == Characters.end())
         {
@@ -571,7 +598,7 @@ namespace ArmSpace
     void Reset()
     {
         const std::scoped_lock Guard{ Lock };
-        Clear();
+        ClearAll();
         VanillaClip = nullptr;
         VanillaAtomic = nullptr;
         VanillaCharacter = nullptr;

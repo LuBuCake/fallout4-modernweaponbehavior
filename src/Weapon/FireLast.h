@@ -17,4 +17,6 @@
 namespace FireLast
 {
     void OnEventSending(const RE::BSFixedString& Event);
+
+    [[nodiscard]] bool Playing();
 }

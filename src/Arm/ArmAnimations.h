@@ -18,11 +18,17 @@ namespace ArmAnimations
 {
     void Initialize();
 
-    void OnAnimationEvent(const RE::BSFixedString& Tag);
+    [[nodiscard]] bool OnAnimationEvent(const RE::BSFixedString& Tag);
+
+    [[nodiscard]] const RE::BSFixedString& Unload();
+
+    [[nodiscard]] bool RefuseIdle(const RE::BSFixedString& Event);
 
     [[nodiscard]] bool Refuse(const RE::BSFixedString& Event);
 
     [[nodiscard]] const RE::BSFixedString* Fallback(const RE::BSFixedString& Event);
+
+    [[nodiscard]] const RE::BSFixedString* RefusedFallback(const RE::BSFixedString& Event);
 
     void Reset();
 }

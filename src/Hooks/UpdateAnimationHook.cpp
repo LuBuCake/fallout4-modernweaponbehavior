@@ -22,6 +22,7 @@
 #include "Reload/BoltChargeResync.h"
 #include "Reload/DropUnspentAmmo.h"
 #include "Reload/LoopReload.h"
+#include "Reload/SightedBoltCharge.h"
 #include "Reload/SightedReload.h"
 #include "Settings/Settings.h"
 #include "Sprint/SprintCamera.h"
@@ -55,6 +56,7 @@ namespace
             SprintCamera::Tick(This);
             BoltChargeResync::Tick(This);
             SightedReload::Tick(This, Delta);
+            SightedBoltCharge::Tick(This, Delta);
             AimDownSight::Tick(This);
             SightedFireJiggle::Tick(This);
             DropUnspentAmmo::Tick(This);

@@ -22,5 +22,7 @@ namespace SightedReload
 
     void SetAimButton(bool Held);
 
+    [[nodiscard]] bool AimButtonHeld();
+
     void Reset();
 }

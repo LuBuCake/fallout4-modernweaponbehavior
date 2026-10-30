@@ -15,6 +15,7 @@
 #include "SightedReload.h"
 #include "Config/WeaponConfig.h"
 #include "Core/EquippedWeapon.h"
+#include "Core/GunState.h"
 #include "Settings/Settings.h"
 
 namespace
@@ -24,6 +25,8 @@ namespace
     std::uint32_t                    SeenGeneration{ 0 };
     bool                             Matched{ false };
     bool                             WarnedMissing{ false };
+
+    constexpr std::int32_t SightedStartStateID = 64;
 
     constexpr float AimRetryInterval = 0.1f;
 
@@ -58,6 +61,7 @@ namespace
     bool       InSightedReload{ false };
     bool       ExpectEnter{ false };
     bool       RepeatedEnter{ false };
+    bool       ReloadStarting{ false };
 
     [[nodiscard]] bool TagIs(const RE::BSFixedString& Tag, std::string_view Name)
     {
@@ -80,6 +84,26 @@ namespace
         bool       Active = false;
 
         return Player && Player->GetGraphVariableImplBool(Variable, Active) && Active;
+    }
+
+    const RE::BSFixedString& StartVariable()
+    {
+        static const RE::BSFixedString Variable{ "iMWB_SightedReloadStart" };
+
+        return Variable;
+    }
+
+    [[nodiscard]] bool StartsInTheSights()
+    {
+        const auto   Player = RE::PlayerCharacter::GetSingleton();
+        std::int32_t Start = 0;
+
+        if (!Player || !Player->GetGraphVariableImplInt(StartVariable(), Start) || Start != SightedStartStateID)
+            return false;
+
+        const auto State = Core::GetGunState(Player);
+
+        return State == RE::GUN_STATE::kSighted || State == RE::GUN_STATE::kFireSighted;
     }
 
     [[nodiscard]] bool MatchFor(const std::optional<Core::EquippedWeapon>& Weapon)
@@ -154,8 +178,11 @@ namespace SightedReload
         InReload = InReload && ReloadActive;
 
         Sync(Player, LockVariable(), WantedValue && InReload ? 1 : 0);
+        Sync(Player, StartVariable(), WantedValue && AimHeld ? SightedStartStateID : 0);
 
-        if (AimReleased.exchange(false) && WantedValue && InReload && SightedClip)
+        if (AimHeld)
+            AimReleased = false;
+        else if (WantedValue && InReload && SightedClip && AimReleased.exchange(false))
         {
             static const RE::BSFixedString ReleaseEvent{ "rifleSightedEnd" };
             const bool Accepted = Player->NotifyAnimationGraphImpl(ReleaseEvent);
@@ -201,6 +228,11 @@ namespace SightedReload
             REX::INFO("Sighted reload: aim button {}", Held ? "down" : "up");
     }
 
+    bool AimButtonHeld()
+    {
+        return AimHeld.load();
+    }
+
     bool OnAnimationEvent(const RE::BSAnimationGraphEvent& Event)
     {
         const auto& Tag = Event.tag;
@@ -220,11 +252,30 @@ namespace SightedReload
                 Sync(Player, LockVariable(), ReloadEnter && Wanted ? 1 : 0);
         }
 
+        if (TagIs(Tag, "MWB_SightedReloadStart"sv))
+        {
+            ReloadStarting = true;
+
+            return false;
+        }
+
+        if (TagIs(Tag, "reloadState"sv) && std::exchange(ReloadStarting, false) && TagIs(Event.payload, "Enter"sv) &&
+            StartsInTheSights())
+        {
+            if (Settings::VerboseLog())
+                REX::INFO("Sighted reload: started in the sights, reloadState Enter dropped");
+
+            return true;
+        }
+
         if (TagIs(Tag, "MWB_ReloadSightedEnter"sv))
         {
             RepeatedEnter = InSightedReload && SightedClipActive();
             ExpectEnter = true;
             InSightedReload = true;
+
+            if (!AimHeld)
+                AimReleased = true;
 
             return false;
         }
@@ -276,6 +327,8 @@ namespace SightedReload
         InSightedReload = false;
         ExpectEnter = false;
         RepeatedEnter = false;
+        ReloadStarting = false;
         ReloadActive = false;
+        AimReleased = false;
     }
 }

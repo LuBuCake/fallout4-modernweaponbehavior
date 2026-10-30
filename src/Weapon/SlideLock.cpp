@@ -16,6 +16,7 @@
 #include "Config/WeaponConfig.h"
 #include "Core/EquippedWeapon.h"
 #include "Reload/DropUnspentAmmo.h"
+#include "Weapon/FireLast.h"
 #include "Settings/Settings.h"
 #include "Weapon/WeaponBones.h"
 
@@ -164,7 +165,7 @@ namespace SlideLock
             WeaponBones::SetBones(SlideLockLayer, Rule ? Rule->Bones : std::vector<WeaponConfig::BoneOffset>{}, Base ? Base->GetFormID() : 0u);
         }
 
-        const bool Empty = Weapon && Weapon->Data && Weapon->Data->ammoCount == 0 && !DropUnspentAmmo::MagazineDropped();
+        const bool Empty = Weapon && Weapon->Data && Weapon->Data->ammoCount == 0 && !DropUnspentAmmo::MagazineDropped() && !FireLast::Playing();
         const bool Held = Rule && Empty;
         const bool Locked = Held && !(Rule->DisableInEmptyReloads && ReloadActive.load(std::memory_order_relaxed));
 

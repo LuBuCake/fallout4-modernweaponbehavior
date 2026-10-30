@@ -23,6 +23,7 @@ namespace
     constexpr float GiveUpSeconds = 3.0f;
 
     std::atomic<bool> Pending{ false };
+    std::atomic<bool> Fresh{ false };
     float             Elapsed{ 0.0f };
 
     [[nodiscard]] bool GunAtRest(RE::PlayerCharacter* Player)
@@ -46,6 +47,21 @@ namespace
         }
     }
 
+    [[nodiscard]] bool GunActed(RE::PlayerCharacter* Player)
+    {
+        switch (Core::GetGunState(Player))
+        {
+            case RE::GUN_STATE::kReloading:
+            case RE::GUN_STATE::kThrowing:
+            case RE::GUN_STATE::kSighted:
+            case RE::GUN_STATE::kFire:
+            case RE::GUN_STATE::kFireSighted:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     void Finish(std::string_view Why)
     {
         Pending = false;
@@ -62,11 +78,23 @@ namespace AimAfterLoad
     {
         Elapsed = 0.0f;
         Pending = true;
+        Fresh = true;
     }
 
     void Tick(RE::PlayerCharacter* Player, float Delta)
     {
-        if (!Pending.load() || !Player)
+        if (!Player)
+            return;
+
+        if (Fresh.load() && Player->GetWeaponMagicDrawn() && GunActed(Player))
+        {
+            Fresh = false;
+
+            if (Settings::VerboseLog())
+                REX::INFO("Aim after load: the gun acted, the graph opens the sights again on its own");
+        }
+
+        if (!Pending.load())
             return;
 
         Elapsed += Delta;
@@ -88,9 +116,7 @@ namespace AimAfterLoad
             return;
         }
 
-        static const RE::BSFixedString Event{ "initiateStart" };
-
-        if (Player->NotifyAnimationGraphImpl(Event))
+        if (Player->NotifyAnimationGraphImpl(OpenEvent()))
         {
             Finish("initiateStart sent, the sights can be raised");
             return;
@@ -100,9 +126,35 @@ namespace AimAfterLoad
             Finish("initiateStart refused, given up");
     }
 
+    bool Refused(const RE::BSFixedString& Event)
+    {
+        static const RE::BSFixedString AimEvent{ "rifleSightedStart" };
+
+        if (!Fresh.load() || Event != AimEvent)
+            return false;
+
+        const auto Player = RE::PlayerCharacter::GetSingleton();
+
+        return Player && GunAtRest(Player);
+    }
+
+    const RE::BSFixedString& OpenEvent()
+    {
+        static const RE::BSFixedString Event{ "initiateStart" };
+
+        return Event;
+    }
+
+    void Retried(bool Accepted)
+    {
+        if (Settings::VerboseLog())
+            REX::INFO("Aim after load: rifleSightedStart refused at rest, initiateStart sent, sights {}", Accepted ? "raised" : "still refused");
+    }
+
     void Reset()
     {
         Pending = false;
+        Fresh = false;
         Elapsed = 0.0f;
     }
 }
