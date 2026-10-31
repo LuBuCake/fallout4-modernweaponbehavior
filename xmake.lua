@@ -6,7 +6,7 @@ set_config("commonlib_json", true)
 includes("lib/commonlibf4")
 
 set_project("Modern Weapon Behavior")
-set_version("2.0.0")
+set_version("2.1.0")
 set_license("GPL-3.0")
 set_languages("c++23")
 set_warnings("allextra")

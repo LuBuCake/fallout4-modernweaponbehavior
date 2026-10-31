@@ -94,6 +94,7 @@ namespace WeaponConfig
     {
         std::vector<BoneOffset> Bones;
         bool                    DisableInEmptyReloads{ false };
+        bool                    DisableInFireLast{ false };
         float                   BlendIn{ 0.0f };
         float                   BlendOut{ 0.0f };
 

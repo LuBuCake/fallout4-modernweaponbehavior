@@ -77,6 +77,7 @@ namespace
     {
         std::optional<std::vector<BoneOptions>> Bones;
         std::optional<bool>                     DisableInEmptyReloads;
+        std::optional<bool>                     DisableInFireLast;
         std::optional<float>                    BlendIn;
         std::optional<float>                    BlendOut;
         std::optional<std::string>              LockSound;
@@ -189,8 +190,8 @@ template <>
 struct glz::meta<SlideLockOptions>
 {
     using T = SlideLockOptions;
-    static constexpr auto value = object("bones", &T::Bones, "disableInEmptyReloads", &T::DisableInEmptyReloads, "blendIn", &T::BlendIn,
-        "blendOut", &T::BlendOut, "lockSound", &T::LockSound, "releaseSound", &T::ReleaseSound, "hideBones", &T::HideBones, "showBones",
+    static constexpr auto value = object("bones", &T::Bones, "disableInEmptyReloads", &T::DisableInEmptyReloads, "disableInFireLast",
+        &T::DisableInFireLast, "blendIn", &T::BlendIn, "blendOut", &T::BlendOut, "lockSound", &T::LockSound, "releaseSound", &T::ReleaseSound, "hideBones", &T::HideBones, "showBones",
         &T::ShowBones);
 };
 
@@ -825,6 +826,7 @@ namespace
 
         SlideLockRule Rule{ .Bones = std::move(*Bones),
             .DisableInEmptyReloads = Options.DisableInEmptyReloads.value_or(false),
+            .DisableInFireLast = Options.DisableInFireLast.value_or(false),
             .BlendIn = Options.BlendIn.value_or(0.0f),
             .BlendOut = Options.BlendOut.value_or(0.0f) };
 
@@ -981,8 +983,8 @@ namespace
             return Form ? std::format(", {} {:08X}", Key, Form->GetFormID()) : std::string{};
         };
 
-        return std::format("{}{}, blend in {:.3f}s, out {:.3f}s{}{}{}{}", DescribeBones(Rule.Bones, "bones"sv),
-            Rule.DisableInEmptyReloads ? ", off in empty reloads" : "", Rule.BlendIn, Rule.BlendOut, Sound("lock sound"sv, Rule.LockSound),
+        return std::format("{}{}{}, blend in {:.3f}s, out {:.3f}s{}{}{}{}", DescribeBones(Rule.Bones, "bones"sv),
+            Rule.DisableInEmptyReloads ? ", off in empty reloads" : "", Rule.DisableInFireLast ? ", off in the last shot" : "", Rule.BlendIn, Rule.BlendOut, Sound("lock sound"sv, Rule.LockSound),
             Sound("release sound"sv, Rule.ReleaseSound), DescribeNodes(Rule.HideNodes, "hides"sv), DescribeNodes(Rule.ShowNodes, "shows"sv));
     }
 

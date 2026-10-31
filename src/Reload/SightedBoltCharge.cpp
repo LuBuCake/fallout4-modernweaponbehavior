@@ -15,6 +15,7 @@
 #include "SightedBoltCharge.h"
 #include "Core/EquippedWeapon.h"
 #include "Core/GunState.h"
+#include "Hooks/ClipGeneratorHook.h"
 #include "Reload/SightedReload.h"
 #include "Settings/Settings.h"
 
@@ -26,20 +27,30 @@ namespace
     constexpr float        FollowAfter = 0.1f;
     constexpr std::chrono::milliseconds TraceAfter{ 1500 };
     constexpr std::chrono::milliseconds ReentryWindow{ 200 };
+    constexpr float                     CutAfter = 0.1f;
+    constexpr std::array                BoltClips{ "WPNBoltCharge"sv, "WPNBoltChargeSighted"sv };
 
     std::mutex Lock;
     bool       Starting{ false };
     bool       StartedSighted{ false };
     bool       EndedSighted{ false };
+    bool       LeftBolt{ false };
 
     std::atomic<bool> InSightedBolt{ false };
     std::atomic<bool> Active{ false };
+    std::atomic<bool> Outside{ false };
     float             Mismatch{ 0.0f };
+    float             ClipMissing{ 0.0f };
+    std::atomic<bool> LeaveSights{ false };
 
     std::atomic<bool> ShotSeen{ false };
     std::atomic<bool> Due{ false };
     std::atomic<bool> Ready{ false };
     std::atomic<bool> Shot{ false };
+    bool              BoltClipGone{ false };
+    bool              ReadyWaited{ false };
+    std::atomic<bool> Asking{ false };
+    std::atomic<bool> GameTook{ false };
     float             DueAge{ 0.0f };
     float             AskIn{ 0.0f };
 
@@ -129,7 +140,10 @@ namespace
         TraceUntil = Now() + std::chrono::duration_cast<std::chrono::steady_clock::duration>(TraceAfter).count();
 
         if (!Open)
+        {
             ClosedAt = Now();
+            Outside = false;
+        }
 
         static const RE::BSFixedString SwapVariable{ "iMWB_BoltSwap" };
 
@@ -137,9 +151,63 @@ namespace
             Sync(Player, SwapVariable, Open ? 1 : 0);
     }
 
+    void Cut(std::string_view Why)
+    {
+        LeaveSights = InSightedBolt.load();
+        EndedSighted = false;
+        LeftBolt = false;
+        SetSwap(false);
+        SetInSights(false);
+
+        if (Settings::VerboseLog())
+            REX::INFO("Sighted bolt charge: cut before its end ({}){}", Why, LeaveSights ? ", the sights are left" : "");
+    }
+
+    void Watch(RE::PlayerCharacter* Player, float Delta)
+    {
+        if (!Active || Player->Is3rdPersonVisible() || Hooks::FindActiveClip(BoltClips))
+        {
+            ClipMissing = 0.0f;
+            return;
+        }
+
+        ClipMissing += Delta;
+
+        if (ClipMissing < CutAfter)
+            return;
+
+        ClipMissing = 0.0f;
+
+        const std::scoped_lock Guard{ Lock };
+
+        if (Active)
+            Cut("no bolt clip plays");
+    }
+
+    void LeaveIfStuck(RE::PlayerCharacter* Player)
+    {
+        if (!LeaveSights || Active)
+            return;
+
+        if (!InSights(Player))
+        {
+            LeaveSights = false;
+            return;
+        }
+
+        if (SightedReload::AimButtonHeld())
+            return;
+
+        LeaveSights = false;
+        Player->SetInIronSightsImpl(false);
+
+        if (Settings::VerboseLog())
+            REX::INFO("Sighted bolt charge: still in the sights after the cut with the aim button up, sights left");
+    }
+
     void Follow(RE::PlayerCharacter* Player, float Delta)
     {
-        const bool Held = SightedReload::AimButtonHeld();
+        const bool Held = SightedReload::AimButtonHeld() && !Outside;
 
         if (!Active || Held == InSightedBolt.load())
         {
@@ -193,6 +261,8 @@ namespace SightedBoltCharge
             return;
 
         Sync(Player, StartVariable(), SightedReload::AimButtonHeld() || InSights(Player) ? SightedStateID : 0);
+        Watch(Player, Delta);
+        LeaveIfStuck(Player);
         Follow(Player, Delta);
 
         if (ShotSeen.exchange(false))
@@ -209,6 +279,7 @@ namespace SightedBoltCharge
             else if (!Active)
             {
                 Due = true;
+                BoltClipGone = false;
                 DueAge = 0.0f;
                 AskIn = 0.0f;
 
@@ -216,6 +287,9 @@ namespace SightedBoltCharge
                     REX::INFO("Sighted bolt charge: shot with {} loaded, bolt due", Loaded);
             }
         }
+
+        if (GameTook.exchange(false) && Due)
+            Settle("the game's own boltChargeStart was taken");
 
         static const RE::BSFixedString DueVariable{ "iMWB_BoltDue" };
         static const RE::BSFixedString PluginVariable{ "iMWB_BoltPlugin" };
@@ -240,7 +314,21 @@ namespace SightedBoltCharge
             return;
         }
 
+        if (!Hooks::FindActiveClip(BoltClips))
+            BoltClipGone = true;
+        else if (BoltClipGone && !Active)
+        {
+            Settle("a bolt charge plays without the graph's MWB_BoltChargeStart");
+            return;
+        }
+
+        if (!Ready)
+            ReadyWaited = false;
+
         if (!Ready || Active || !Player->GetWeaponMagicDrawn() || Player->meleeAttackState != 0)
+            return;
+
+        if (!std::exchange(ReadyWaited, true))
             return;
 
         AskIn -= Delta;
@@ -251,7 +339,9 @@ namespace SightedBoltCharge
         AskIn = AskInterval;
 
         static const RE::BSFixedString BoltEvent{ "boltChargeStart" };
+        Asking = true;
         const bool Accepted = Player->NotifyAnimationGraphImpl(BoltEvent);
+        Asking = false;
 
         if (Settings::VerboseLog())
             REX::INFO("Sighted bolt charge: bolt ready, boltChargeStart {}", Accepted ? "accepted" : "refused");
@@ -269,6 +359,7 @@ namespace SightedBoltCharge
         if (TagIs(Tag, "weaponFire"sv))
         {
             ShotSeen = true;
+            TraceUntil = Now() + std::chrono::duration_cast<std::chrono::steady_clock::duration>(TraceAfter).count();
             return false;
         }
 
@@ -301,6 +392,8 @@ namespace SightedBoltCharge
             Starting = true;
             StartedSighted = StartsInTheSights();
             EndedSighted = false;
+            LeftBolt = false;
+            Outside = false;
             SetSwap(true);
             Ready = false;
             Shot = false;
@@ -320,6 +413,32 @@ namespace SightedBoltCharge
 
             if (Due)
                 Settle("reload or bolt charge entered");
+        }
+
+        if (TagIs(Tag, "reloadStateExit"sv) && Active)
+        {
+            LeftBolt = true;
+            return false;
+        }
+
+        if (LeftBolt && (TagIs(Tag, "PASprintStart"sv) || TagIs(Tag, "reloadStateEnter"sv)))
+        {
+            LeftBolt = false;
+            Outside = true;
+
+            if (Settings::VerboseLog())
+                REX::INFO("Sighted bolt charge: WPNBoltCharge_MG left before the end ({}), the bolt charge goes on unsighted", Tag.c_str());
+        }
+        else if (LeftBolt && ((TagIs(Tag, "reloadState"sv) && TagIs(Event.payload, "Exit"sv)) ||
+                                 (TagIs(Tag, "sightedState"sv) && TagIs(Event.payload, "Enter"sv))))
+        {
+            LeftBolt = false;
+            EndedSighted = InSightedBolt.load();
+            SetSwap(false);
+            SetInSights(false);
+
+            if (Settings::VerboseLog())
+                REX::INFO("Sighted bolt charge: WPNBoltCharge_MG left with no end event, taken as the end ({})", EndedSighted ? "in the sights" : "unsighted");
         }
 
         if (TagIs(Tag, "reloadEnd"sv) || TagIs(Tag, "MWB_BoltSightedEnd"sv) || TagIs(Tag, "reloadStateExit"sv))
@@ -383,14 +502,35 @@ namespace SightedBoltCharge
         Starting = false;
         StartedSighted = false;
         EndedSighted = false;
+        LeftBolt = false;
         InSightedBolt = false;
         Active = false;
+        Outside = false;
         Mismatch = 0.0f;
+        ClipMissing = 0.0f;
+        LeaveSights = false;
         ShotSeen = false;
         Due = false;
         Ready = false;
         Shot = false;
+        BoltClipGone = false;
+        ReadyWaited = false;
+        Asking = false;
+        GameTook = false;
         DueAge = 0.0f;
         AskIn = 0.0f;
+    }
+
+    void OnEventSent(const RE::BSFixedString& Event, bool Accepted)
+    {
+        static const RE::BSFixedString BoltEvent{ "boltChargeStart" };
+
+        if (!Accepted || Asking || Event != BoltEvent)
+            return;
+
+        GameTook = true;
+
+        if (Settings::VerboseLog())
+            REX::INFO("Sighted bolt charge: the game's own boltChargeStart taken by the graph");
     }
 }

@@ -20,5 +20,7 @@ namespace SightedBoltCharge
 
     [[nodiscard]] bool OnAnimationEvent(const RE::BSAnimationGraphEvent& Event);
 
+    void OnEventSent(const RE::BSFixedString& Event, bool Accepted);
+
     void Reset();
 }

@@ -20,6 +20,7 @@
 #include "Melee/HoldBlock.h"
 #include "Reload/BoltChargeResync.h"
 #include "Reload/DropUnspentAmmo.h"
+#include "Reload/SightedBoltCharge.h"
 #include "Reload/TacticalReload.h"
 #include "Sprint/Slide.h"
 #include "Sprint/SprintFire.h"
@@ -120,6 +121,7 @@ namespace
             }
 
             BoltChargeResync::OnEventSent(*SentEvent, Accepted);
+            SightedBoltCharge::OnEventSent(*SentEvent, Accepted);
             DropUnspentAmmo::OnEventSent(*SentEvent, Accepted);
             ArmSpace::OnEventSent(*SentEvent, Accepted);
             FireMode::OnEventSent(*SentEvent, Accepted);
