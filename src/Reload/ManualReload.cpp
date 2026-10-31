@@ -14,6 +14,7 @@
 
 #include "ManualReload.h"
 #include "Config/WeaponConfig.h"
+#include "Core/EquippedWeapon.h"
 #include "Settings/Settings.h"
 
 namespace
@@ -24,6 +25,12 @@ namespace
     constexpr REL::ID     QueueActionID{ 390914, 2234273 };
     constexpr std::size_t ScanSize = 0x400;
 
+    constexpr REL::ID     PlayOneShotID{ 1239759, 2214755 };
+    constexpr std::size_t DoActionScanSize = 0x800;
+    constexpr std::size_t DoActionSelfCalls = 2;
+    constexpr std::size_t ReloadArgumentWindow = 12;
+    constexpr std::array<std::uint8_t, 3> ReloadArgument{ 0x8D, 0x50, 0x6C };
+
     constexpr std::uint8_t CallOpcode = 0xE8;
     constexpr std::size_t  CallInstructionSize = 5;
 
@@ -31,16 +38,48 @@ namespace
 
     thread_local bool SkipAutoReload{ false };
 
+    [[nodiscard]] bool ManualFor(RE::TESObjectWEAP* Base, const RE::TESObjectWEAP::InstanceData* Instance)
+    {
+        return Settings::ManualReload() && (!Base || !WeaponConfig::Excluded(WeaponConfig::Feature::ManualReload, Base, Instance));
+    }
+
     [[nodiscard]] bool ManualFor(const RE::BGSObjectInstanceT<RE::TESObjectWEAP>& Weapon)
     {
-        if (!Settings::ManualReload())
-            return false;
-
         const auto Base = Weapon.object ? Weapon.object->As<RE::TESObjectWEAP>() : nullptr;
-        const auto Instance = static_cast<const RE::TESObjectWEAP::InstanceData*>(Weapon.instanceData.get());
 
-        return !Base || !WeaponConfig::Excluded(WeaponConfig::Feature::ManualReload, Base, Instance);
+        return ManualFor(Base, static_cast<const RE::TESObjectWEAP::InstanceData*>(Weapon.instanceData.get()));
     }
+
+    void PlayDryFire(const Core::EquippedWeapon& Weapon)
+    {
+        using PlayOneShot_t = void(RE::BGSSoundDescriptorForm*, std::uint32_t, const RE::NiPoint3*, RE::NiAVObject*);
+        static REL::Relocation<PlayOneShot_t*> PlayOneShot{ PlayOneShotID };
+
+        const auto Sound = Weapon.Instance ? Weapon.Instance->attackFailSound : Weapon.Base->weaponData.attackFailSound;
+
+        if (Sound)
+            PlayOneShot(Sound, 0, nullptr, nullptr);
+    }
+
+    struct FailedAttackReload
+    {
+        static bool Thunk(RE::PlayerControls* Controls, RE::DEFAULT_OBJECT Action, RE::ActionInput::ACTIONPRIORITY Priority)
+        {
+            const auto Weapon = Core::GetEquippedWeapon(RE::PlayerCharacter::GetSingleton());
+
+            if (Action != RE::DEFAULT_OBJECT::kActionReload || !Weapon || !ManualFor(Weapon->Base, Weapon->Instance))
+                return Original(Controls, Action, Priority);
+
+            if (Settings::VerboseLog())
+                REX::INFO("Manual reload: the trigger on an empty magazine dry fires instead of reloading");
+
+            const bool Fired = Original(Controls, RE::DEFAULT_OBJECT::kActionFireEmpty, Priority);
+            PlayDryFire(*Weapon);
+            return Fired;
+        }
+
+        inline static REL::Relocation<decltype(Thunk)> Original;
+    };
 
     struct QueueAutoReload
     {
@@ -110,6 +149,44 @@ namespace
 
         return Found;
     }
+
+    [[nodiscard]] std::optional<std::uintptr_t> FindFailedAttackReload(std::uintptr_t DoAction)
+    {
+        std::vector<std::uintptr_t> SelfCalls;
+
+        for (std::size_t i = ReloadArgumentWindow; i + CallInstructionSize <= DoActionScanSize; ++i)
+        {
+            const auto At = DoAction + i;
+
+            if (*reinterpret_cast<const std::uint8_t*>(At) != CallOpcode)
+                continue;
+
+            const auto Displacement = *reinterpret_cast<const std::int32_t*>(At + 1);
+
+            if (static_cast<std::uintptr_t>(static_cast<std::intptr_t>(At + CallInstructionSize) + Displacement) == DoAction)
+                SelfCalls.push_back(At);
+        }
+
+        if (SelfCalls.size() != DoActionSelfCalls)
+            return std::nullopt;
+
+        std::optional<std::uintptr_t> Found;
+
+        for (const auto At : SelfCalls)
+        {
+            const std::span<const std::uint8_t> Before{ reinterpret_cast<const std::uint8_t*>(At - ReloadArgumentWindow), ReloadArgumentWindow };
+
+            if (std::ranges::search(Before, ReloadArgument).empty())
+                continue;
+
+            if (Found)
+                return std::nullopt;
+
+            Found = At;
+        }
+
+        return Found;
+    }
 }
 
 namespace ManualReload
@@ -142,5 +219,17 @@ namespace ManualReload
         UseAmmo::Original = Vtable.write_vfunc(UseAmmoIndex, UseAmmo::Thunk);
         QueueAutoReload::Original = REL::GetTrampoline().write_call<5>(*Site, QueueAutoReload::Thunk);
         REX::INFO("Manual reload installed (automatic reload at {:X}, chaining to {:X})", *Site, QueueAutoReload::Original.address());
+
+        const auto DoAction = REL::Relocation<std::uintptr_t>{ RE::ID::PlayerControls::DoAction }.address();
+        const auto FailedSite = FindFailedAttackReload(DoAction);
+
+        if (!FailedSite)
+        {
+            REX::WARN("The reload on a failed attack was not found (another mod may have it). The trigger on an empty magazine still reloads.");
+            return;
+        }
+
+        FailedAttackReload::Original = REL::GetTrampoline().write_call<5>(*FailedSite, FailedAttackReload::Thunk);
+        REX::INFO("Manual reload: trigger on an empty magazine at {:X}, chaining to {:X}", *FailedSite, FailedAttackReload::Original.address());
     }
 }

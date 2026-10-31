@@ -152,6 +152,7 @@ namespace
         std::int16_t Collarbone{ 0 };
         float StopTime{ -1.0f };
         bool Logged{ false };
+        bool Restarted{ false };
 
         bool Pending{ false };
         float Time{ 0.0f };
@@ -334,7 +335,8 @@ namespace
 
         const float Time = Read<float>(ClipNode, ClipLocalTime);
         const float Duration = Read<float>(Animation, AnimationDuration);
-        float Weight = (std::min)(Smooth(Time / BlendIn), Smooth((Duration - Time) / BlendOut));
+        const float In = Arm.Restarted ? 1.0f : Smooth(Time / BlendIn);
+        float Weight = (std::min)(In, Smooth((Duration - Time) / BlendOut));
 
         if (Arm.StopTime >= 0.0f)
             Weight = (std::min)(Weight, Smooth(1.0f - (Time - Arm.StopTime) / BlendOut));
@@ -513,16 +515,22 @@ namespace ArmSpace
 
         if (const auto Collarbone = CollarboneOf(Clip))
         {
+            bool Restarted = false;
+
             {
                 const std::scoped_lock Guard{ Lock };
                 const auto Slot = SlotOf(Collarbone);
-                Arms[Slot] = { Clip, Character, Collarbone, -1.0f, false };
+                Restarted = Arms[Slot].Clip && Arms[Slot].Clip != Clip && Arms[Slot].Character == Character && Arms[Slot].StopTime < 0.0f;
+                Arms[Slot] = { Clip, Character, Collarbone, -1.0f, false, Restarted };
                 WatchedClips[Slot] = Clip;
                 WatchedCharacter = Character;
             }
 
             if (Settings::VerboseLog())
                 REX::INFO("Arm space diag: arm clip '{}' started", Name ? Name : "?");
+
+            if (Settings::VerboseLog() && Restarted)
+                REX::INFO("Arm space diag: it restarts the arm, corrected in full from its first frame");
 
             return;
         }

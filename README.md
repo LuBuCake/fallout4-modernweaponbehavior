@@ -10,9 +10,9 @@ This repository holds the source code of the plugin (`MWB.dll`) as released on N
 * Looped reload the way Bethesda does it in Fallout 76 and Starfield: one shell per pass, blended passes, cancel at the end of the pass.
 * Tactical reload, sighted reload, sprint transitions and sprinting equips, chosen per weapon through JSON files, by weapon, keyword or form list.
 * Inspect, ammo check (with an on-screen magazine readout, optionally on every gun), special attack and fire mode switch, callable from Papyrus and MCM hotkeys.
-* Arm-only animations, one per arm at a time, with weapon lock (guns and melee weapons), slide lock (with lock and release sounds, nodes hidden while locked, and an option to wait for the last shot clip) and per fire mode weapon bone poses.
+* Arm-only animations, one per arm at a time (a new one restarts the arm unless either is locked), with weapon lock (guns and melee weapons), slide lock (with lock and release sounds, nodes hidden while locked, and an option to wait for the last shot clip) and per fire mode weapon bone poses.
 * Animation annotations to fire ammo, use items and cast spells from any animation.
-* Weapon HUD module (with the names given at the workbench), bullet in the chamber, drop unspent ammo on reload and manual reload (the last three with per weapon exclusions).
+* Weapon HUD module (with the names given at the workbench), bullet in the chamber, drop unspent ammo on reload and manual reload, where only the reload button reloads and the trigger on an empty magazine dry fires (the last three with per weapon exclusions).
 * Hold to block for melee and fists, and firing while sprinting in first person.
 * Tactical sprint and slide in first person, as in Call of Duty, with optional clips per weapon and a slide sound per floor material.
 * Last shot clips: a fire animation of its own for the last round in the magazine, from the hip and from the sights.

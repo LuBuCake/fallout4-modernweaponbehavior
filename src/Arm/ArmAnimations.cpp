@@ -42,16 +42,20 @@ namespace
         std::optional<RE::BSFixedString> LockOn;
         std::optional<RE::BSFixedString> LockOff;
         std::optional<RE::BSFixedString> Free;
+        std::optional<RE::BSFixedString> Restartable;
     };
 
     struct ArmState
     {
         std::atomic<bool> Locked{ false };
         std::atomic<bool> Busy{ false };
+        std::atomic<bool> Restartable{ false };
         std::atomic<std::int64_t> PendingSince{ 0 };
     };
 
     constexpr std::array<std::string_view, 2> SideNames{ "left"sv, "right"sv };
+    constexpr std::array<std::string_view, 2> StatePrefixes{ "MWB_LeftArm"sv, "MWB_RightArm"sv };
+    constexpr auto EndSuffix = "End"sv;
     constexpr std::chrono::seconds PendingTimeout{ 3 };
 
     std::vector<RE::BSFixedString> WeaponActionNames;
@@ -63,7 +67,9 @@ namespace
     std::optional<RE::BSFixedString> CombatEnter;
     std::optional<RE::BSFixedString> CombatExit;
     std::optional<RE::BSFixedString> FallbackEvent;
+    std::optional<RE::BSFixedString> StopEvent;
     constexpr auto ArmEventPrefix = "dyn_MWB_"sv;
+    constexpr auto LockedMark = "Locked"sv;
 
     [[nodiscard]] std::int64_t Now()
     {
@@ -94,6 +100,20 @@ namespace
 
         return Since != 0 && Now() - Since < std::chrono::duration_cast<std::chrono::steady_clock::duration>(PendingTimeout).count();
     }
+
+    [[nodiscard]] bool IsLocked(const RE::BSFixedString& Event)
+    {
+        const std::string_view Name{ Event.c_str() ? Event.c_str() : "" };
+
+        return Name.find(LockedMark) != std::string_view::npos;
+    }
+
+    [[nodiscard]] bool IsEnd(const RE::BSFixedString& Tag, std::size_t ArmSide)
+    {
+        const std::string_view Name{ Tag.c_str() ? Tag.c_str() : "" };
+
+        return Name.starts_with(StatePrefixes[ArmSide]) && Name.ends_with(EndSuffix);
+    }
 }
 
 namespace ArmAnimations
@@ -102,8 +122,11 @@ namespace ArmAnimations
     {
         WeaponActionNames.assign(WeaponActionEvents.begin(), WeaponActionEvents.end());
         UnloadEvent.emplace("AnimObjUnequip");
-        Events[Left] = { RE::BSFixedString{ "MWB_LeftArmLockOn" }, RE::BSFixedString{ "MWB_LeftArmLockOff" }, RE::BSFixedString{ "MWB_LeftArmFree" } };
-        Events[Right] = { RE::BSFixedString{ "MWB_RightArmLockOn" }, RE::BSFixedString{ "MWB_RightArmLockOff" }, RE::BSFixedString{ "MWB_RightArmFree" } };
+        Events[Left] = { RE::BSFixedString{ "MWB_LeftArmLockOn" }, RE::BSFixedString{ "MWB_LeftArmLockOff" }, RE::BSFixedString{ "MWB_LeftArmFree" },
+            RE::BSFixedString{ "MWB_LeftArmRestartable" } };
+        Events[Right] = { RE::BSFixedString{ "MWB_RightArmLockOn" }, RE::BSFixedString{ "MWB_RightArmLockOff" }, RE::BSFixedString{ "MWB_RightArmFree" },
+            RE::BSFixedString{ "MWB_RightArmRestartable" } };
+        StopEvent.emplace("MWB_ArmStop");
         CombatEnter.emplace("MWB_CombatEnter");
         CombatExit.emplace("MWB_CombatExit");
         FallbackEvent.emplace("dyn_ActivationAllowMovement");
@@ -129,11 +152,26 @@ namespace ArmAnimations
             auto& Arm = Arms[i];
             const auto& Names = Events[i];
 
+            if (Tag == *Names.Restartable)
+            {
+                Arm.Restartable = true;
+                return false;
+            }
+
+            if (Tag == *StopEvent || IsEnd(Tag, i))
+            {
+                Arm.Restartable = false;
+                continue;
+            }
+
             if (Tag == *Names.LockOn || Tag == *Names.LockOff)
             {
                 const bool NowLocked = Tag == *Names.LockOn;
                 Arm.Busy = true;
                 Arm.PendingSince = 0;
+
+                if (NowLocked)
+                    Arm.Restartable = false;
 
                 if (Arm.Locked.exchange(NowLocked) != NowLocked && Settings::VerboseLog())
                     REX::INFO("Arm animation: {} arm {} the weapon actions", SideNames[i], NowLocked ? "locks" : "unlocks");
@@ -144,6 +182,7 @@ namespace ArmAnimations
             if (Tag == *Names.Free)
             {
                 Arm.Locked = false;
+                Arm.Restartable = false;
 
                 if (!Arm.Busy.exchange(false))
                     return false;
@@ -177,6 +216,16 @@ namespace ArmAnimations
 
         if (Arm.Busy.load() || Pending(Arm))
         {
+            if (!IsLocked(Event) && !Arm.Locked.load() && !Pending(Arm) && Arm.Restartable.exchange(false))
+            {
+                Arm.PendingSince = Now();
+
+                if (Settings::VerboseLog())
+                    REX::INFO("Arm animation: {} restarts the {} arm", Event.c_str(), SideNames[*ArmSide]);
+
+                return false;
+            }
+
             if (Settings::VerboseLog())
                 REX::INFO("Arm animation: {} refused, the {} arm already plays one", Event.c_str(), SideNames[*ArmSide]);
 
