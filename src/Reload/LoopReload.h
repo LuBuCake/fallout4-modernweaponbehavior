@@ -34,4 +34,9 @@ namespace Reload
     void RequestStop();
 
     void Abort(std::string_view Reason);
+
+    [[nodiscard]] bool Refuse(const RE::BSFixedString& Event);
+
+    void TraceEvent(const RE::BSAnimationGraphEvent& Event);
+    void TraceSent(const RE::BSFixedString& Event, bool Accepted, std::string_view Path);
 }

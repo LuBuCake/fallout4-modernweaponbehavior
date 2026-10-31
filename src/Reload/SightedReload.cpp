@@ -27,6 +27,8 @@ namespace
     bool                             WarnedMissing{ false };
 
     constexpr std::int32_t SightedStartStateID = 64;
+    constexpr std::int32_t SightedLock = 1;
+    constexpr std::int32_t ReloadLock = 2;
 
     constexpr float AimRetryInterval = 0.1f;
 
@@ -75,6 +77,14 @@ namespace
         static const RE::BSFixedString Variable{ "iMWB_AimLock" };
 
         return Variable;
+    }
+
+    [[nodiscard]] std::int32_t LockValue(bool SightedWeapon, bool InReload)
+    {
+        if (!InReload)
+            return 0;
+
+        return SightedWeapon ? SightedLock : ReloadLock;
     }
 
     [[nodiscard]] bool SightedClipActive()
@@ -177,7 +187,7 @@ namespace SightedReload
         Player->GetGraphVariableImplBool(SightedClipVariable, SightedClip);
         InReload = InReload && ReloadActive;
 
-        Sync(Player, LockVariable(), WantedValue && InReload ? 1 : 0);
+        Sync(Player, LockVariable(), LockValue(WantedValue != 0, InReload));
         Sync(Player, StartVariable(), WantedValue && AimHeld ? SightedStartStateID : 0);
 
         if (AimHeld)
@@ -249,7 +259,7 @@ namespace SightedReload
             ReloadActive = ReloadEnter;
 
             if (const auto Player = RE::PlayerCharacter::GetSingleton())
-                Sync(Player, LockVariable(), ReloadEnter && Wanted ? 1 : 0);
+                Sync(Player, LockVariable(), LockValue(Wanted.load(), ReloadEnter));
         }
 
         if (TagIs(Tag, "MWB_SightedReloadStart"sv))

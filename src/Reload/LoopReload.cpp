@@ -15,7 +15,9 @@
 #include "LoopReload.h"
 #include "Config/WeaponConfig.h"
 #include "Core/EquippedWeapon.h"
+#include "Core/GunState.h"
 #include "Hooks/ClipGeneratorHook.h"
+#include "Reload/SightedReload.h"
 #include "Settings/Settings.h"
 
 namespace
@@ -25,6 +27,7 @@ namespace
     constexpr auto StaleAfter = std::chrono::seconds(5);
     constexpr std::uint32_t MinimumShellsForLoop = 2;
     constexpr float NotPending = -1.0f;
+    constexpr auto TraceAfter = std::chrono::milliseconds(1500);
 
     struct LoopState
     {
@@ -54,7 +57,17 @@ namespace
     std::atomic<bool> Pending{ false };
     std::atomic<bool> TickAvailable{ false };
 
+    std::atomic<std::int64_t> TraceUntil{ 0 };
+    bool                      TracedAimHeld{ false };
+
     std::vector<RE::BSFixedString> LoopEvents;
+
+    constexpr std::array FireTags{
+        "attackStart"sv,
+        "attackStartAuto"sv,
+        "attackRelease"sv,
+        "attackReleaseCharge"sv,
+    };
 
     constexpr std::array InterruptTags{
         "reloadStateExit"sv,
@@ -70,6 +83,18 @@ namespace
         const std::string_view Text{ Tag.c_str() };
 
         return Text.size() == Name.size() && _strnicmp(Text.data(), Name.data(), Text.size()) == 0;
+    }
+
+    [[nodiscard]] bool Tracing()
+    {
+        return Settings::VerboseLog() && Clock::now().time_since_epoch().count() < TraceUntil.load();
+    }
+
+    [[nodiscard]] int TracedGunState()
+    {
+        const auto Player = RE::PlayerCharacter::GetSingleton();
+
+        return Player ? static_cast<int>(Core::GetGunState(Player)) : -1;
     }
 
     [[nodiscard]] bool TryBegin()
@@ -117,6 +142,7 @@ namespace
         StopRequested = false;
 
         REX::INFO("Loop reload started: {}/{} loaded, {} shell(s) to insert, loop delay {:.3f}s", Loaded, Capacity, Shells, State.Delay);
+        TraceUntil = (std::numeric_limits<std::int64_t>::max)();
 
         return true;
     }
@@ -134,6 +160,7 @@ namespace
 
         State.Instance->ammoCapacity = State.RealCapacity;
         REX::INFO("Loop reload ended ({}): {}/{} shell(s) inserted", Reason, State.Inserted, State.ShellsToAdd);
+        TraceUntil = (Clock::now() + TraceAfter).time_since_epoch().count();
 
         State = {};
         StopRequested = false;
@@ -262,6 +289,14 @@ namespace Reload
 
     void Tick(float Delta)
     {
+        if (Tracing())
+        {
+            const bool Held = SightedReload::AimButtonHeld();
+
+            if (Held != std::exchange(TracedAimHeld, Held))
+                REX::INFO("Looped reload trace: aim button {} (gunState {})", Held ? "down" : "up", TracedGunState());
+        }
+
         if (!Pending.load(std::memory_order_relaxed))
             return;
 
@@ -311,5 +346,42 @@ namespace Reload
     {
         const std::scoped_lock Guard{ Lock };
         Finish(Reason);
+    }
+
+    bool Refuse(const RE::BSFixedString& Event)
+    {
+        if (Event.empty() || std::ranges::none_of(FireTags, [&](std::string_view Name) { return TagIs(Event, Name); }))
+            return false;
+
+        {
+            const std::scoped_lock Guard{ Lock };
+
+            if (!State.Active())
+                return false;
+        }
+
+        TraceSent(Event, false, "the loop (refused by MWB)"sv);
+
+        return true;
+    }
+
+    void TraceEvent(const RE::BSAnimationGraphEvent& Event)
+    {
+        if (!Tracing())
+            return;
+
+        const std::string_view Payload{ Event.payload.c_str() ? Event.payload.c_str() : "" };
+
+        REX::INFO("Looped reload trace: graph event {}{}{}{} (gunState {})", Event.tag.c_str(), Payload.empty() ? "" : "(", Payload,
+            Payload.empty() ? "" : ")", TracedGunState());
+    }
+
+    void TraceSent(const RE::BSFixedString& Event, bool Accepted, std::string_view Path)
+    {
+        if (!Tracing())
+            return;
+
+        REX::INFO("Looped reload trace: {} sent by {}, {} (gunState {})", Event.c_str(), Path, Accepted ? "accepted" : "refused",
+            TracedGunState());
     }
 }

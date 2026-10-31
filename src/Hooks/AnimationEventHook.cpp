@@ -61,6 +61,7 @@ namespace
     {
         static RE::BSEventNotifyControl Thunk(Sink* This, const RE::BSAnimationGraphEvent& Event, Source* EventSource)
         {
+            Reload::TraceEvent(Event);
             const auto ReloadAction = Reload::BeforeGameHandles(Event.tag, EventSource);
 
             if (SightedReload::OnAnimationEvent(Event))

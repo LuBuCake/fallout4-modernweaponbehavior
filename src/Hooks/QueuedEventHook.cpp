@@ -15,6 +15,7 @@
 #include "QueuedEventHook.h"
 #include "Arm/ArmAnimations.h"
 #include "Hooks/ClipGeneratorHook.h"
+#include "Reload/LoopReload.h"
 
 namespace
 {
@@ -37,7 +38,12 @@ namespace
                 return Original(Graph, FallbackEvent, Arg3);
 
             if (Original(Graph, Event, Arg3))
+            {
+                Reload::TraceSent(*Event, true, "IDLE queue"sv);
                 return true;
+            }
+
+            Reload::TraceSent(*Event, false, "IDLE queue"sv);
 
             if (const auto FallbackEvent = ArmAnimations::RefusedFallback(*Event))
                 return Original(Graph, FallbackEvent, Arg3);
