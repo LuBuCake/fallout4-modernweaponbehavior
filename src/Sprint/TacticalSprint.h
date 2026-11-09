@@ -24,6 +24,12 @@ namespace TacticalSprint
 
     [[nodiscard]] float ClipTimeScale(std::string_view Clip);
 
+    [[nodiscard]] bool ThirdPerson();
+
+    [[nodiscard]] float ThirdPersonPlaybackScale(std::string_view Node, std::string_view AnimationFile);
+
+    void NoteThirdPersonClip(std::string_view Node, std::string_view AnimationFile, bool Scaled, float BeforeUpdate, float AfterUpdate, float Written);
+
     void Tick(RE::PlayerCharacter* Player, float Delta);
 
     void Reset();

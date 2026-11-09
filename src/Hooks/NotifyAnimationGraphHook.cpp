@@ -44,11 +44,15 @@ namespace
         static bool Thunk(Holder* This, const RE::BSFixedString& Event)
         {
             const RE::BSFixedString* SentEvent = &Event;
+            const RE::BSFixedString* AsSent = nullptr;
 
             if (const auto Translated = TacticalReload::Translate(Event))
             {
                 if (!*Translated)
                     return false;
+
+                if (TacticalReload::TriedAsSent(Event))
+                    AsSent = &Event;
 
                 SentEvent = *Translated;
             }
@@ -92,6 +96,15 @@ namespace
                     BoltChargeResync::Taken();
                     return true;
                 }
+            }
+
+            if (AsSent && Original(This, *AsSent))
+            {
+                TacticalReload::TakenAsSent(*AsSent);
+                BoltChargeResync::OnEventSent(*SentEvent, true);
+                DropUnspentAmmo::OnEventSent(*SentEvent, true);
+                Reload::TraceSent(*AsSent, true, "NotifyAnimationGraphImpl"sv);
+                return true;
             }
 
             if (const auto Replacement = TacticalReload::Replace(*SentEvent))

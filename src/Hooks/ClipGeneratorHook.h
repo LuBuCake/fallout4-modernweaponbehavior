@@ -20,7 +20,9 @@ namespace Hooks
 
     void RefreshPlayerCharacters(RE::PlayerCharacter* Player);
 
-    [[nodiscard]] std::optional<std::uint32_t> RemainingReloadCompletes();
+    [[nodiscard]] std::optional<std::uint32_t> InsertShellsAfterCallLoop(RE::Actor* Actor);
+
+    void SkipToLastInsertShell(RE::Actor* Actor);
 
     void ForgetClips();
 

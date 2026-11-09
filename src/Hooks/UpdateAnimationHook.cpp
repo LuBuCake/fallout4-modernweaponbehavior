@@ -38,6 +38,7 @@
 #include "Weapon/SightedFireJiggle.h"
 #include "Weapon/SlideLock.h"
 #include "Weapon/WeaponBones.h"
+#include "Weapon/WeaponGraphSights.h"
 
 namespace
 {
@@ -57,6 +58,7 @@ namespace
             BoltChargeResync::Tick(This);
             SightedReload::Tick(This, Delta);
             SightedBoltCharge::Tick(This, Delta);
+            WeaponGraphSights::Tick(This);
             AimDownSight::Tick(This);
             SightedFireJiggle::Tick(This);
             DropUnspentAmmo::Tick(This);

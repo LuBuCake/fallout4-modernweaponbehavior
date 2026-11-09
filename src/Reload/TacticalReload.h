@@ -20,6 +20,10 @@ namespace TacticalReload
 
     [[nodiscard]] std::optional<const RE::BSFixedString*> Translate(const RE::BSFixedString& Event);
 
+    [[nodiscard]] bool TriedAsSent(const RE::BSFixedString& Event);
+
+    void TakenAsSent(const RE::BSFixedString& Event);
+
     [[nodiscard]] const RE::BSFixedString* Replace(const RE::BSFixedString& Event);
 
     void Refused();

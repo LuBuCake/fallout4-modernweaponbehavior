@@ -19,4 +19,10 @@ namespace Hooks
     void InstallAnimationEventHook();
 
     void InstallActorAnimationEventHook();
+
+    void InstallGraphManagerEventHook();
+
+    [[nodiscard]] bool GraphManagerHookInstalled();
+
+    void ForwardToDependentGraphs(RE::BSAnimationGraphManager* Manager, const RE::BSFixedString& Tag);
 }

@@ -16,18 +16,29 @@
 
 namespace Reload
 {
-    enum class Action
+    enum class Step
     {
         None,
-        RequestNextPass,
+        InsertShell,
+        FullReload,
+        CallLoop,
+    };
+
+    struct Action
+    {
+        Step          What{ Step::None };
+        std::uint32_t Count{ 0 };
+        bool          Full{ false };
     };
 
     void Initialize();
 
-    [[nodiscard]] Action BeforeGameHandles(const RE::BSFixedString& Tag, const void* Source);
-    void                 AfterGameHandles(Action Requested);
+    [[nodiscard]] Action BeforeGameHandles(const RE::BSAnimationGraphEvent& Event, const void* Source);
+    void                 AfterGameHandles(const Action& Requested);
 
     void Tick(float Delta);
+
+    void OnActorEvent(RE::Actor* Actor, const RE::BSAnimationGraphEvent& Event);
 
     void SetTickAvailable(bool Available);
 

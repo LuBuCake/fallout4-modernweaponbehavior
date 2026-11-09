@@ -39,6 +39,8 @@ namespace
         std::int32_t StartState{ 0 };
         std::int32_t Stop{ 0 };
         std::int32_t TacticalLoop{ 0 };
+        std::int32_t JumpStop{ 0 };
+        std::int32_t JumpLand{ 0 };
 
         bool operator==(const Wanted&) const = default;
     };
@@ -120,17 +122,25 @@ namespace
 
         if (Tactical && (Rule->TacticalStart || Rule->Tactical))
         {
+            const std::int32_t TacticalStop = Rule->TacticalStop ? SprintTacticalStopClip : Stop;
+
             return {
                 .StartState = Rule->TacticalStart && !HoldState.SkipStart ? WPNSprintTacticalStartStateID : Rule->Tactical ? WPNSprintTacticalStateID : 0,
-                .Stop = Rule->TacticalStop ? SprintTacticalStopClip : Stop,
+                .Stop = TacticalStop,
                 .TacticalLoop = TacticalLoop,
+                .JumpStop = TacticalStop,
+                .JumpLand = Rule->TacticalStart ? WPNSprintTacticalStartStateID : Rule->Tactical ? WPNSprintTacticalStateID : 0,
             };
         }
 
+        const std::int32_t PlainStop = Tactical && Rule->TacticalStop ? SprintTacticalStopClip : Stop;
+
         return {
             .StartState = Rule->Start && !HoldState.SkipStart && !Sprinting ? WPNSprintStartStateID : 0,
-            .Stop = Tactical && Rule->TacticalStop ? SprintTacticalStopClip : Stop,
+            .Stop = PlainStop,
             .TacticalLoop = TacticalLoop,
+            .JumpStop = PlainStop,
+            .JumpLand = Rule->Start ? WPNSprintStartStateID : 0,
         };
     }
 
@@ -238,6 +248,8 @@ namespace Sprint
         static const RE::BSFixedString StartVariable{ "iMWB_SprintStartState" };
         static const RE::BSFixedString StopVariable{ "iMWB_SprintStop" };
         static const RE::BSFixedString TacticalLoopVariable{ "iMWB_SprintTacticalLoop" };
+        static const RE::BSFixedString JumpStopVariable{ "iMWB_SprintJumpStop" };
+        static const RE::BSFixedString JumpLandVariable{ "iMWB_SprintJumpLand" };
         static const RE::BSFixedString EquipStartVariable{ "iMWB_EquipStartState" };
         static const RE::BSFixedString SyncSprintVariable{ "iSyncSprintState" };
 
@@ -271,7 +283,7 @@ namespace Sprint
             SprintingFor = Sprinting == 1 ? SprintingFor + Delta : 0.0f;
             WantedValues = WantedFor(Rule, CurrentHold, SprintingFor >= SprintSettled, TacticalSprint::Active());
 
-            if (Slide::Active() && Slide::PlaysClip())
+            if ((Slide::Active() && Slide::PlaysClip()) || Player->IsJumping())
                 WantedValues.Stop = 0;
             EquipClip = Rule && Rule->Equip;
         }
@@ -282,6 +294,8 @@ namespace Sprint
         bool Known = Sync(Player, StartVariable, WantedValues.StartState);
         Known = Sync(Player, StopVariable, WantedValues.Stop) && Known;
         Known = Sync(Player, TacticalLoopVariable, WantedValues.TacticalLoop) && Known;
+        Known = Sync(Player, JumpStopVariable, WantedValues.JumpStop) && Known;
+        Known = Sync(Player, JumpLandVariable, WantedValues.JumpLand) && Known;
 
         if (!Known && WantedValues != Wanted{} && !WarnedMissing)
         {

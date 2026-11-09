@@ -7,19 +7,21 @@ This repository holds the source code of the plugin (`MWB.dll`) as released on N
 
 ## Features
 
-* Looped reload the way Bethesda does it in Fallout 76 and Starfield: one shell per pass, blended passes, cancel at the end of the pass with the fire or reload button (the end of the clip always plays), and the aim kept from cutting the reload short.
-* Tactical reload, sighted reload, sprint transitions and sprinting equips, chosen per weapon through JSON files, by weapon, keyword or form list.
+* Looped reload the way Bethesda does it in Fallout 76 and Starfield: one shell per pass, blended passes, cancel at the end of the pass with the fire or reload button (the end of the clip always plays), and the aim kept from cutting the reload short. Driven by the `MWB_Reload` annotation (`InsertShell` adds one round, on any weapon; `CallLoop` calls the next pass), for NPCs too.
+* Tactical reload, sighted reload, sprint transitions and sprinting equips, chosen per weapon through JSON files, by weapon, keyword or form list. Weapons whose own behavior plays a tactical reload on Tactical Reload's events keep it.
 * Inspect, ammo check (with an on-screen magazine readout, optionally on every gun), special attack and fire mode switch, callable from Papyrus and MCM hotkeys.
 * Arm-only animations, one per arm at a time (a new one restarts the arm unless either is locked), with weapon lock (guns and melee weapons), slide lock (with lock and release sounds, nodes hidden while locked, and an option to wait for the last shot clip) and per fire mode weapon bone poses.
 * Animation annotations to fire ammo, use items and cast spells from any animation.
 * Weapon HUD module (with the names given at the workbench), bullet in the chamber, drop unspent ammo on reload and manual reload, where only the reload button reloads and the trigger on an empty magazine dry fires (the last three with per weapon exclusions).
 * Hold to block for melee and fists, and firing while sprinting in first person.
-* Tactical sprint and slide in first person, as in Call of Duty, with optional clips per weapon and a slide sound per floor material.
+* Tactical sprint (first and third person) and slide (first person), as in Call of Duty, with optional clips per weapon and a slide sound per floor material; jumping while sprinting plays the sprint stop and start clips.
 * Last shot clips: a fire animation of its own for the last round in the magazine, from the hip and from the sights.
 * Bolt charge while aiming that stays in the sights, always follows the shot and carries on through a sprint.
+* See Through Scopes' 3D scopes follow the real aim, so they no longer blink at the start of a sighted bolt charge or reload.
 * Aim sway and hold breath, the game's own, for regular scopes, 3D scopes and sights without a scope, each with its own setting.
 * Aim down sight in and out animations timed to the weapon's sight speed, and a setting for the sighted fire jiggle.
 * Animation clips missing from the AnimTextData still load.
+* MWB's animation events and variables are added in memory to every character behavior the game loads, so the mod ships only the behaviors it changes and works under other mods' root behaviors.
 * A setting to play the full equip animation instead of the quick one when switching weapons from favorites.
 * An exclusion panel inside the MCM: players take any feature away from the weapon in hand, or from every weapon with one of its keywords, and it applies at once.
 
@@ -55,7 +57,7 @@ xmake build
 
 The plugin is written to `build/windows/x64/releasedbg/MWB.dll`, with its `MWB.pdb` next to it.
 
-[CommonLibF4](https://github.com/Dear-Modding-FO4/commonlibf4) comes as a git submodule in `lib/commonlibf4`, pinned to the exact commit the release was built with: [`2fc2bf95`](https://github.com/Dear-Modding-FO4/commonlibf4/tree/2fc2bf95e264f946d67102b2eef6286fad6d9f36). If you cloned without `--recurse-submodules`, run `git submodule update --init --recursive`.
+[CommonLibF4](https://github.com/Dear-Modding-FO4/commonlibf4) comes as a git submodule in `lib/commonlibf4`, pinned to the exact commit the release was built with: [`1bd796eb`](https://github.com/Dear-Modding-FO4/commonlibf4/tree/1bd796eb593b32154a0a2bb2e96c3747bae3b0e2). If you cloned without `--recurse-submodules`, run `git submodule update --init --recursive`.
 
 ### Visual Studio
 
@@ -88,14 +90,15 @@ src/
   Core/        runtime check, F4SE messages, the equipped weapon and the gun state
   Fire/        MWB_WeaponFireAmmo annotation
   HUD/         weapon HUD module and ammo check readout
-  Hooks/       animation events, graph notify, clip generators, graph generate, idle start, input, queued events, subgraph animations, animation update
+  Behavior/    MWB's event and variable names added to every behavior loaded
+  Hooks/       animation events, graph manager events, graph notify, clip generators, graph generate, idle start, input, queued events, subgraph animations, animation update
   Magic/       MWB_UseAlchemyItem and MWB_CastSpell annotations
   Melee/       hold to block
   Papyrus/     native functions of the MWB script
   Reload/      looped, sighted and tactical reload, sighted bolt charge, bullet in the chamber, drop unspent ammo, manual reload, bolt charge resync
   Settings/    MWB.ini, MWB_Custom.ini, the MCM settings and the MCM exclusion panel
   Sprint/      sprint transitions, third person sprint camera, firing while sprinting, tactical sprint and slide
-  Weapon/      fire mode switch and pose, slide lock, weapon bones, scope sway, aim down sight, sighted fire jiggle, full equip, last shot clips and aiming right after a save loads
+  Weapon/      fire mode switch and pose, slide lock, weapon bones, scope sway, aim down sight, sighted fire jiggle, full equip, last shot clips, aiming right after a save loads and the weapon graph's sights (See Through Scopes)
 ```
 
 ## License

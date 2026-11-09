@@ -125,9 +125,24 @@ namespace TacticalReload
         }
 
         if (Settings::VerboseLog())
-            REX::INFO("Tactical reload: {} (Tactical Reload's) -> {}", Event.c_str(), Translated ? Translated->c_str() : "dropped");
+            REX::INFO("Tactical reload: {} (Tactical Reload's) -> {}{}", Event.c_str(), Translated ? Translated->c_str() : "dropped",
+                TriedAsSent(Event) ? " if the animation graph refuses it" : "");
 
         return Translated;
+    }
+
+    bool TriedAsSent(const RE::BSFixedString& Event)
+    {
+        if (!TRReloadReserveStart)
+            return false;
+
+        return Event == *TRReloadReserveStart || Event == *ReloadJamStart || Event == *InjuredDownReloadReserveStart;
+    }
+
+    void TakenAsSent(const RE::BSFixedString& Event)
+    {
+        if (Settings::VerboseLog())
+            REX::INFO("Tactical reload: {} taken as sent (the weapon's own behavior handles it)", Event.c_str());
     }
 
     const RE::BSFixedString* Replace(const RE::BSFixedString& Event)

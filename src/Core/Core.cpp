@@ -18,6 +18,7 @@
 #include "Magic/MagicAnnotations.h"
 #include "Arm/ArmAnimations.h"
 #include "Arm/ArmSpace.h"
+#include "Behavior/NameInjection.h"
 #include "Config/WeaponConfig.h"
 #include "Fire/AmmoFire.h"
 #include "HUD/AmmoCheckDisplay.h"
@@ -53,6 +54,7 @@
 #include "Weapon/FireModePose.h"
 #include "Weapon/ScopeSway.h"
 #include "Weapon/SlideLock.h"
+#include "Weapon/WeaponGraphSights.h"
 #include "Weapon/WeaponBones.h"
 
 namespace
@@ -88,6 +90,7 @@ namespace Core
     void F4SELoaded()
     {
         Settings::Load();
+        NameInjection::Install();
         Papyrus::Register();
         ExclusionPanel::Register();
         AmmoFire::InstallEditorIDHook();
@@ -108,6 +111,7 @@ namespace Core
         FireMode::Initialize();
         Hooks::InstallAnimationEventHook();
         Hooks::InstallActorAnimationEventHook();
+        Hooks::InstallGraphManagerEventHook();
         Hooks::InstallNotifyAnimationGraphHook();
         Hooks::InstallQueuedEventHook();
         Hooks::InstallIdleStartHook();
@@ -133,6 +137,7 @@ namespace Core
     void PreLoadGame()
     {
         Reload::Abort("loading a save");
+        WeaponGraphSights::Reset();
         Hooks::ForgetClips();
         MagicAnnotations::Reset();
         SightedReload::Reset();

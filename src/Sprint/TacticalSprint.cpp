@@ -36,11 +36,84 @@ namespace
 
     constexpr std::array GunSprintClips{ "WPNSprint"sv };
     constexpr std::array OtherSprintClips{ "MTSprint"sv, "MTSprint_NoAnnotations"sv, "SprintForward"sv, "SprintForward_NoAnnotations"sv };
+    constexpr std::array ThirdPersonSprintNodes{ "WPNSprint"sv, "WPNSprint_Jump"sv, "SprintForward"sv, "SprintForward00"sv, "SprintLeanLeft"sv, "SprintLeanLeft00"sv,
+        "SprintLeanRight"sv, "SprintLeanRight00"sv, "Camera_SprintForward"sv };
+    constexpr std::array ThirdPersonSprintAnimations{ "WPNSprint"sv, "SprintForward"sv, "SprintLeanLeft"sv, "SprintLeanRight"sv };
+
+    constexpr float       DiagnosticDelay = 1.0f;
+    constexpr float       SpeedSampleTime = 1.0f;
+    constexpr std::size_t MaxDiagnosticClips = 24;
 
     std::atomic<bool> Running{ false };
     std::atomic<bool> OwnLoop{ false };
+    std::atomic<bool> InThirdPerson{ false };
     RE::BSFixedString PendingEvent;
     float             PendingFor{ 0.0f };
+
+    std::mutex               DiagnosticLock;
+    std::vector<std::string> SeenClips;
+    bool                     ScaledSeen{ false };
+    bool                     UnscaledReported{ false };
+    float                    ThirdPersonFor{ 0.0f };
+
+    struct SpeedSample
+    {
+        RE::NiPoint3 Last;
+        bool         Valid{ false };
+        bool         ThirdPerson{ false };
+        bool         Tactical{ false };
+        float        Distance{ 0.0f };
+        float        Time{ 0.0f };
+    };
+
+    SpeedSample Sample;
+
+    [[nodiscard]] bool SameText(std::string_view Left, std::string_view Right)
+    {
+        return Left.size() == Right.size() && _strnicmp(Left.data(), Right.data(), Left.size()) == 0;
+    }
+
+    [[nodiscard]] std::string_view Stem(std::string_view File)
+    {
+        const auto Dot = File.find_last_of('.');
+
+        return Dot == std::string_view::npos ? File : File.substr(0, Dot);
+    }
+
+    void ResetDiagnostics()
+    {
+        const std::scoped_lock Guard{ DiagnosticLock };
+        SeenClips.clear();
+        ScaledSeen = false;
+        UnscaledReported = false;
+        ThirdPersonFor = 0.0f;
+    }
+
+    void ReportUnscaled(float Delta)
+    {
+        if (!Settings::VerboseLog() || !InThirdPerson)
+            return;
+
+        const std::scoped_lock Guard{ DiagnosticLock };
+
+        if (ScaledSeen || UnscaledReported)
+            return;
+
+        ThirdPersonFor += Delta;
+
+        if (ThirdPersonFor < DiagnosticDelay)
+            return;
+
+        UnscaledReported = true;
+
+        std::string List;
+
+        for (const auto& Clip : SeenClips)
+            List += (List.empty() ? "" : ", ") + Clip;
+
+        REX::INFO("Tactical sprint (third person): no sprint clip scaled after {:.1f}s; player clips updated: {}", ThirdPersonFor,
+            List.empty() ? "none"s : List);
+    }
 
     [[nodiscard]] bool InFirstPerson(RE::PlayerCharacter* Player)
     {
@@ -50,6 +123,33 @@ namespace
     [[nodiscard]] bool Sprinting(const RE::PlayerCharacter* Player)
     {
         return (static_cast<std::uint16_t>(Player->moveMode) & SprintingBit) != 0;
+    }
+
+    void MeasureSpeed(RE::PlayerCharacter* Player, float Delta)
+    {
+        if (!Settings::VerboseLog())
+            return;
+
+        const auto Position = Player->GetPosition();
+        const bool ThirdPerson = !InFirstPerson(Player);
+        const bool Tactical = Running;
+
+        if (!Sprinting(Player) || Delta <= 0.0f || !Sample.Valid || Sample.ThirdPerson != ThirdPerson || Sample.Tactical != Tactical)
+        {
+            Sample = { Position, Sprinting(Player), ThirdPerson, Tactical, 0.0f, 0.0f };
+            return;
+        }
+
+        Sample.Distance += std::hypot(Position.x - Sample.Last.x, Position.y - Sample.Last.y);
+        Sample.Time += Delta;
+        Sample.Last = Position;
+
+        if (Sample.Time < SpeedSampleTime)
+            return;
+
+        REX::INFO("Sprint speed: {:.0f} units/s ({} person{})", Sample.Distance / Sample.Time, ThirdPerson ? "third" : "first", Tactical ? ", tactical" : "");
+        Sample.Distance = 0.0f;
+        Sample.Time = 0.0f;
     }
 
     void End(std::string_view Why)
@@ -88,17 +188,19 @@ namespace
 
         const auto Player = RE::PlayerCharacter::GetSingleton();
 
-        if (!Player || !Player->sprintToggled || !Sprinting(Player) || !InFirstPerson(Player) || Player->IsJumping())
+        if (!Player || !Player->sprintToggled || !Sprinting(Player))
             return false;
 
         Running = true;
         PendingFor = 0.0f;
         PendingEvent = {};
+        InThirdPerson = !InFirstPerson(Player);
+        ResetDiagnostics();
 
         const auto Rule = Sprint::CurrentRule();
         OwnLoop = Rule && Rule->Tactical;
 
-        if (Rule)
+        if (Rule && !InThirdPerson && !Player->IsJumping())
         {
             if (Rule->TacticalStart)
                 PendingEvent = "MWB_SprintTacticalStartPlay"sv;
@@ -253,8 +355,54 @@ namespace TacticalSprint
         return 1.0f;
     }
 
+    bool ThirdPerson()
+    {
+        return InThirdPerson;
+    }
+
+    float ThirdPersonPlaybackScale(std::string_view Node, std::string_view AnimationFile)
+    {
+        if (!Running || !InThirdPerson)
+            return 1.0f;
+
+        const auto File = Stem(AnimationFile);
+        const bool ByNode = std::ranges::any_of(ThirdPersonSprintNodes, [&](std::string_view Name) { return SameText(Name, Node); });
+        const bool ByFile = std::ranges::any_of(ThirdPersonSprintAnimations, [&](std::string_view Name) { return SameText(Name, File); });
+
+        return ByNode || ByFile ? Settings::TacticalSprintSpeed() : 1.0f;
+    }
+
+    void NoteThirdPersonClip(std::string_view Node, std::string_view AnimationFile, bool Scaled, float BeforeUpdate, float AfterUpdate, float Written)
+    {
+        const std::scoped_lock Guard{ DiagnosticLock };
+
+        if (Scaled)
+        {
+            if (ScaledSeen)
+                return;
+
+            ScaledSeen = true;
+            REX::INFO("Tactical sprint (third person): {} ({}) time step x{:.2f}; playback speed {:.3f} into the update, {:.3f} after it, {:.3f} "
+                      "written for the motion",
+                Node, AnimationFile, Settings::TacticalSprintSpeed(), BeforeUpdate, AfterUpdate, Written);
+
+            return;
+        }
+
+        if (ScaledSeen || SeenClips.size() >= MaxDiagnosticClips)
+            return;
+
+        auto Entry = std::format("{} ({})", Node, AnimationFile);
+
+        if (std::ranges::find(SeenClips, Entry) == SeenClips.end())
+            SeenClips.push_back(std::move(Entry));
+    }
+
     void Tick(RE::PlayerCharacter* Player, float Delta)
     {
+        if (Player)
+            MeasureSpeed(Player, Delta);
+
         if (!Running || !Player)
             return;
 
@@ -275,20 +423,20 @@ namespace TacticalSprint
             return;
         }
 
-        if (!InFirstPerson(Player))
-        {
-            End("third person");
-            return;
-        }
-
-        if (Player->IsJumping())
-        {
-            End("jump, back to the normal sprint");
-            return;
-        }
+        InThirdPerson = !InFirstPerson(Player);
+        ReportUnscaled(Delta);
 
         if (PendingEvent.empty())
             return;
+
+        if (InThirdPerson || Player->IsJumping())
+        {
+            if (Settings::VerboseLog())
+                REX::INFO("Tactical sprint: {} dropped ({})", PendingEvent.c_str(), InThirdPerson ? "third person" : "jump");
+
+            PendingEvent = {};
+            return;
+        }
 
         PendingFor += Delta;
 
@@ -305,7 +453,9 @@ namespace TacticalSprint
     {
         Running = false;
         OwnLoop = false;
+        InThirdPerson = false;
         PendingEvent = {};
         PendingFor = 0.0f;
+        ResetDiagnostics();
     }
 }
