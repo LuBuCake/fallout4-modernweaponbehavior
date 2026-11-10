@@ -26,6 +26,13 @@ namespace
         return Variable;
     }
 
+    const RE::BSFixedString& MeleeForceEquipEvent()
+    {
+        static const RE::BSFixedString Event{ "g_weaponForceEquipInstant" };
+
+        return Event;
+    }
+
     [[nodiscard]] bool IsEquipEvent(const RE::BSFixedString& Event)
     {
         static const RE::BSFixedString Equip{ "weapEquip" };
@@ -33,19 +40,45 @@ namespace
 
         return Event == Equip || Event == ForceEquip;
     }
+
+    [[nodiscard]] bool ProcessingForceEquip()
+    {
+        const auto Player = RE::PlayerCharacter::GetSingleton();
+        const auto Process = Player ? Player->currentProcess : nullptr;
+
+        return Process && Process->high && Process->high->processingForceEquip;
+    }
+
+    [[nodiscard]] bool IsMeleeSwitch(const RE::BSFixedString& Event)
+    {
+        if (Event != MeleeForceEquipEvent())
+            return false;
+
+        const bool Switch = ProcessingForceEquip();
+
+        if (!Switch && Settings::VerboseLog())
+            REX::INFO("Full equip: {} outside a weapon switch (load, menu), left as it is", Event.c_str());
+
+        return Switch;
+    }
 }
 
 namespace FullEquip
 {
     std::optional<std::int32_t> Begin(RE::IAnimationGraphManagerHolder* Holder, const RE::BSFixedString& Event)
     {
-        if (!Holder || !Settings::FullEquipOnSwitch() || !IsEquipEvent(Event))
+        if (!Holder || !Settings::FullEquipOnSwitch() || !(IsEquipEvent(Event) || IsMeleeSwitch(Event)))
             return std::nullopt;
 
         std::int32_t Current = 0;
 
         if (!Holder->GetGraphVariableImplInt(DrawStateVariable(), Current) || Current == FullDrawState)
+        {
+            if (Settings::VerboseLog())
+                REX::INFO("Full equip: {} left as it is (iSyncWeaponDrawState {})", Event.c_str(), Current);
+
             return std::nullopt;
+        }
 
         Holder->SetGraphVariableInt(DrawStateVariable(), FullDrawState);
 

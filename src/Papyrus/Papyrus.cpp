@@ -14,6 +14,7 @@
 
 #include "Papyrus.h"
 #include "HUD/AmmoCheckDisplay.h"
+#include "Weapon/FireMode.h"
 #include "Settings/Settings.h"
 
 #include <variant>
@@ -60,6 +61,9 @@ namespace
 
     bool SwitchFireMode(GlobalFunctionSelf)
     {
+        if (const auto Switched = FireMode::SwitchWithoutAnimation())
+            return *Switched;
+
         return Send("MWB_SwitchFireModeStart");
     }
 }

@@ -9,7 +9,7 @@ This repository holds the source code of the plugin (`MWB.dll`) as released on N
 
 * Looped reload the way Bethesda does it in Fallout 76 and Starfield: one shell per pass, blended passes, cancel at the end of the pass with the fire or reload button (the end of the clip always plays), and the aim kept from cutting the reload short. Driven by the `MWB_Reload` annotation (`InsertShell` adds one round, on any weapon; `CallLoop` calls the next pass), for NPCs too.
 * Tactical reload, sighted reload, sprint transitions and sprinting equips, chosen per weapon through JSON files, by weapon, keyword or form list. Weapons whose own behavior plays a tactical reload on Tactical Reload's events keep it.
-* Inspect, ammo check (with an on-screen magazine readout, optionally on every gun), special attack and fire mode switch, callable from Papyrus and MCM hotkeys.
+* Inspect, ammo check (with an on-screen magazine readout, optionally on every gun), special attack and fire mode switch (optionally an instant switch on every gun, experimental), callable from Papyrus and MCM hotkeys.
 * Arm-only animations, one per arm at a time (a new one restarts the arm unless either is locked), with weapon lock (guns and melee weapons), slide lock (with lock and release sounds, nodes hidden while locked, and an option to wait for the last shot clip) and per fire mode weapon bone poses.
 * Animation annotations to fire ammo, use items and cast spells from any animation.
 * Weapon HUD module (with the names given at the workbench), bullet in the chamber, drop unspent ammo on reload and manual reload, where only the reload button reloads and the trigger on an empty magazine dry fires (the last three with per weapon exclusions).
@@ -22,7 +22,7 @@ This repository holds the source code of the plugin (`MWB.dll`) as released on N
 * Aim down sight in and out animations timed to the weapon's sight speed, and a setting for the sighted fire jiggle.
 * Animation clips missing from the AnimTextData still load.
 * MWB's animation events and variables are added in memory to every character behavior the game loads, so the mod ships only the behaviors it changes and works under other mods' root behaviors.
-* A setting to play the full equip animation instead of the quick one when switching weapons from favorites.
+* A setting to play the full equip animation instead of the quick one when switching weapons from favorites, guns and melee weapons.
 * An exclusion panel inside the MCM: players take any feature away from the weapon in hand, or from every weapon with one of its keywords, and it applies at once.
 
 ## Supported Runtimes

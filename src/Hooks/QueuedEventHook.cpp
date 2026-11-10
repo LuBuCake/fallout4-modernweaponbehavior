@@ -16,6 +16,7 @@
 #include "Arm/ArmAnimations.h"
 #include "Hooks/ClipGeneratorHook.h"
 #include "Reload/LoopReload.h"
+#include "Weapon/FullEquip.h"
 
 namespace
 {
@@ -37,7 +38,12 @@ namespace
             if (const auto FallbackEvent = ArmAnimations::Fallback(*Event))
                 return Original(Graph, FallbackEvent, Arg3);
 
-            if (Original(Graph, Event, Arg3))
+            const auto Player = RE::PlayerCharacter::GetSingleton();
+            const auto DrawState = FullEquip::Begin(Player, *Event);
+            const bool Sent = Original(Graph, Event, Arg3);
+            FullEquip::End(Player, DrawState);
+
+            if (Sent)
             {
                 Reload::TraceSent(*Event, true, "IDLE queue"sv);
                 return true;

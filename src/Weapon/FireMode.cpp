@@ -16,6 +16,7 @@
 #include "Actions/FirstPerson.h"
 #include "Config/WeaponConfig.h"
 #include "Core/EquippedWeapon.h"
+#include "Core/GunState.h"
 #include "Settings/Settings.h"
 
 namespace
@@ -40,6 +41,13 @@ namespace
 
     std::atomic<bool> Pending{ false };
     std::atomic<bool> Requested{ false };
+
+    using Clock = std::chrono::steady_clock;
+
+    constexpr auto InstantCooldown = std::chrono::milliseconds{ 500 };
+
+    std::mutex InstantLock;
+    Clock::time_point InstantReady{};
 
     [[nodiscard]] bool Ready()
     {
@@ -147,6 +155,52 @@ namespace
         }
 
         return {};
+    }
+
+    [[nodiscard]] std::optional<std::string> WhyNotInstant(RE::PlayerCharacter* Player, const Core::EquippedWeapon& Weapon)
+    {
+        const auto ID = Weapon.Base->GetFormID();
+
+        if (!Ready())
+            return "the feature is off"s;
+
+        if (WeaponConfig::Excluded(WeaponConfig::Feature::FireModeSwitch, Weapon.Base, Weapon.Instance))
+            return std::format("the weapon {:08X} is excluded (\"fireModeSwitch\" in MWB\\Exclusions)", ID);
+
+        if (Weapon.Base->weaponData.type.get() != RE::WEAPON_TYPE::kGun)
+            return std::format("the weapon {:08X} is not a gun", ID);
+
+        if (IsCharging(*Weapon.Instance))
+            return std::format("the weapon {:08X} charges its shots", ID);
+
+        switch (Core::GetGunState(Player))
+        {
+            case RE::GUN_STATE::kReloading:
+                return "reloading"s;
+            case RE::GUN_STATE::kThrowing:
+                return "throwing"s;
+            case RE::GUN_STATE::kFire:
+            case RE::GUN_STATE::kFireSighted:
+                return "firing"s;
+            default:
+                break;
+        }
+
+        if (Player->meleeAttackState != 0)
+            return "in a melee attack"s;
+
+        if (const auto List = Player->inventoryList)
+        {
+            const RE::BSAutoReadLock Lock{ List->rwLock };
+
+            if (const auto Stack = FindEquippedStack(*List, Weapon.Base).Stack; Stack && Stack->count > 1)
+                return std::format("{} identical copies of the weapon {:08X} share the stack", Stack->count, ID);
+        }
+
+        if (Clock::now() < InstantReady)
+            return "too soon after the last switch"s;
+
+        return std::nullopt;
     }
 
     void NotSwitched(std::string_view Reason)
@@ -330,6 +384,38 @@ namespace FireMode
         return Reason.has_value();
     }
 
+    std::optional<bool> SwitchWithoutAnimation()
+    {
+        if (!Settings::FireModeEveryGun())
+            return std::nullopt;
+
+        const auto Player = RE::PlayerCharacter::GetSingleton();
+        const auto Weapon = Player ? Core::GetEquippedWeapon(Player) : std::nullopt;
+
+        if (!Weapon || !Weapon->Base || !Weapon->Instance)
+            return std::nullopt;
+
+        if (WeaponConfig::MatchFireMode(Weapon->Base, Weapon->Instance))
+            return std::nullopt;
+
+        const std::scoped_lock Lock{ InstantLock };
+
+        if (const auto Reason = WhyNotInstant(Player, *Weapon))
+        {
+            REX::INFO("Fire mode: no animation for {:08X}, not switched, {}", Weapon->Base->GetFormID(), *Reason);
+            return false;
+        }
+
+        InstantReady = Clock::now() + InstantCooldown;
+        Pending = false;
+        Requested = true;
+
+        if (Settings::VerboseLog())
+            REX::INFO("Fire mode: no animation for {:08X}, switching", Weapon->Base->GetFormID());
+
+        return true;
+    }
+
     void OnEventSent(const RE::BSFixedString& Event, bool Accepted)
     {
         if (!StartEvent || Event != *StartEvent)
@@ -374,5 +460,8 @@ namespace FireMode
     {
         Pending = false;
         Requested = false;
+
+        const std::scoped_lock Lock{ InstantLock };
+        InstantReady = {};
     }
 }

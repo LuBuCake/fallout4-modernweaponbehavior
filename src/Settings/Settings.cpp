@@ -26,6 +26,7 @@ namespace
     REX::TIniSetting<bool> ManualReloadSetting{ "ManualReload", "bEnabled", false };
     REX::TIniSetting<bool> SlideLockSetting{ "SlideLock", "bEnabled", true };
     REX::TIniSetting<bool> FireModeSwitchSetting{ "FireModeSwitch", "bEnabled", true };
+    REX::TIniSetting<bool> FireModeEveryGunSetting{ "FireModeSwitch", "bEveryGun", false };
     REX::TIniSetting<bool> WeaponHUDSetting{ "WeaponHUD", "bEnabled", true };
     REX::TIniSetting<bool> AmmoCheckEveryGunSetting{ "AmmoCheck", "bEveryGun", false };
     REX::TIniSetting<bool> ThirdPersonSprintFOVSetting{ "ThirdPersonSprintFOV", "bEnabled", true };
@@ -71,6 +72,7 @@ namespace
         McmBool{ "ManualReload", "bEnabled", &ManualReloadSetting },
         McmBool{ "SlideLock", "bEnabled", &SlideLockSetting },
         McmBool{ "FireModeSwitch", "bEnabled", &FireModeSwitchSetting },
+        McmBool{ "FireModeSwitch", "bEveryGun", &FireModeEveryGunSetting },
         McmBool{ "WeaponHUD", "bEnabled", &WeaponHUDSetting },
         McmBool{ "AmmoCheck", "bEveryGun", &AmmoCheckEveryGunSetting },
         McmBool{ "ThirdPersonSprintFOV", "bEnabled", &ThirdPersonSprintFOVSetting },
@@ -129,12 +131,12 @@ namespace
 
     void LogValues(std::string_view When)
     {
-        REX::INFO("Settings ({}): verboseLog={}, bulletInChamber={} (tactical reload only {}), dropUnspentAmmo={}, manualReload={}, slideLock={}, fireModeSwitch={}, weaponHUD={}, ammoCheckEveryGun={}, "
+        REX::INFO("Settings ({}): verboseLog={}, bulletInChamber={} (tactical reload only {}), dropUnspentAmmo={}, manualReload={}, slideLock={}, fireModeSwitch={} (every gun {}), weaponHUD={}, ammoCheckEveryGun={}, "
                   "thirdPersonSprintFOV={}, aimWobble(vanillaScopes={}, 3DScopes={}, noScope={}), holdBlock={}, fireWhileSprinting={}, sightedFireJiggle={}, "
                   "fullEquipOnSwitch={}, tacticalSprint={} (speed x{:.2f}, action points x{:.2f}, animation x{:.2f}), slide={} (duration {:.2f}s, "
                   "committed {:.2f}s, speed x{:.2f})",
             When, VerboseLogSetting.GetValue(), BulletInChamberSetting.GetValue(), BulletInChamberTacticalOnlySetting.GetValue(), DropUnspentAmmoSetting.GetValue(), ManualReloadSetting.GetValue(),
-            SlideLockSetting.GetValue(), FireModeSwitchSetting.GetValue(), WeaponHUDSetting.GetValue(), AmmoCheckEveryGunSetting.GetValue(), ThirdPersonSprintFOVSetting.GetValue(),
+            SlideLockSetting.GetValue(), FireModeSwitchSetting.GetValue(), FireModeEveryGunSetting.GetValue(), WeaponHUDSetting.GetValue(), AmmoCheckEveryGunSetting.GetValue(), ThirdPersonSprintFOVSetting.GetValue(),
             AimWobbleVanillaScopesSetting.GetValue(), AimWobble3DScopesSetting.GetValue(), AimWobbleNoScopeSetting.GetValue(), HoldBlockSetting.GetValue(), FireWhileSprintingSetting.GetValue(),
             SightedFireJiggleSetting.GetValue(), FullEquipOnSwitchSetting.GetValue(), TacticalSprintSetting.GetValue(),
             Settings::TacticalSprintSpeed(), Settings::TacticalSprintActionPoints(), Settings::TacticalSprintAnimation(), SlideSetting.GetValue(),
@@ -198,6 +200,11 @@ namespace Settings
     bool FireModeSwitch()
     {
         return FireModeSwitchAtStartup;
+    }
+
+    bool FireModeEveryGun()
+    {
+        return FireModeEveryGunSetting.GetValue();
     }
 
     bool WeaponHUD()

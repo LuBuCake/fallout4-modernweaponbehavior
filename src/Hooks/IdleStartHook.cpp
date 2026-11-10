@@ -46,11 +46,24 @@ namespace
         inline static REL::Relocation<QueueSignature> Original;
     };
 
-    [[nodiscard]] std::vector<std::uintptr_t> FindCalls(std::uintptr_t Function, std::uintptr_t Target)
+    [[nodiscard]] std::size_t ScanLimit(std::uintptr_t Function, const std::vector<std::uintptr_t>& Functions)
+    {
+        std::size_t Limit = ScanSize;
+
+        for (const auto Other : Functions)
+        {
+            if (Other > Function)
+                Limit = (std::min)(Limit, static_cast<std::size_t>(Other - Function));
+        }
+
+        return Limit;
+    }
+
+    [[nodiscard]] std::vector<std::uintptr_t> FindCalls(std::uintptr_t Function, std::size_t Size, std::uintptr_t Target)
     {
         std::vector<std::uintptr_t> Found;
 
-        for (std::size_t i = 0; i + 5 <= ScanSize; ++i)
+        for (std::size_t i = 0; i + 5 <= Size; ++i)
         {
             const auto At = Function + i;
 
@@ -80,12 +93,16 @@ namespace Hooks
     {
         const auto Target = REL::Relocation<std::uintptr_t>{ QueueID }.address();
 
-        std::vector<std::uintptr_t> Sites;
+        std::vector<std::uintptr_t> Functions;
 
         for (const auto& StartFunctionID : StartFunctions)
+            Functions.push_back(REL::Relocation<std::uintptr_t>{ StartFunctionID }.address());
+
+        std::vector<std::uintptr_t> Sites;
+
+        for (const auto Function : Functions)
         {
-            const auto Function = REL::Relocation<std::uintptr_t>{ StartFunctionID }.address();
-            const auto Calls = FindCalls(Function, Target);
+            const auto Calls = FindCalls(Function, ScanLimit(Function, Functions), Target);
 
             if (Calls.size() != 1)
             {

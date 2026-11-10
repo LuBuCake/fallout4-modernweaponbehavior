@@ -410,46 +410,11 @@ namespace
         return !InGameCode && IsExecutable(Callee);
     }
 
-    using ArgumentsSignature = bool(RE::BSScrapArray<RE::BSScript::Variable>&);
-
-    class NoArguments
-    {
-    public:
-        virtual NoArguments* Copy(void*) const { return nullptr; }
-        virtual NoArguments* Move(void*) noexcept { return nullptr; }
-        virtual bool Call(RE::BSScrapArray<RE::BSScript::Variable>&) { return true; }
-        virtual const std::type_info& TargetType() const noexcept { return typeid(void); }
-        virtual void DeleteThis(bool) noexcept {}
-        virtual const void* Get() const noexcept { return nullptr; }
-    };
-
-    struct GameArguments
-    {
-        static constexpr std::size_t OGFunctorSlot = 3;
-        static constexpr std::size_t FunctorSlot = 7;
-
-        explicit GameArguments(NoArguments* Functor) noexcept
-        {
-            Slots[OGFunctorSlot] = Functor;
-            Slots[FunctorSlot] = Functor;
-        }
-
-        [[nodiscard]] const RE::BSTThreadScrapFunction<ArgumentsSignature>& AsFunction() const noexcept
-        {
-            return *reinterpret_cast<const RE::BSTThreadScrapFunction<ArgumentsSignature>*>(this);
-        }
-
-        alignas(RE::BSTThreadScrapFunction<ArgumentsSignature>) std::array<void*, 8> Slots{};
-    };
-
-    static_assert(sizeof(GameArguments) == sizeof(RE::BSTThreadScrapFunction<ArgumentsSignature>));
-
     [[nodiscard]] bool CallWithoutArguments(RE::BSScript::IVirtualMachine& VM, std::uint64_t Handle, const RE::BSFixedString& Script, const RE::BSFixedString& Function)
     {
-        NoArguments Functor;
-        const GameArguments Arguments{ &Functor };
+        const RE::BSTThreadScrapFunction<bool(RE::BSScrapArray<RE::BSScript::Variable>&)> Arguments{ [](RE::BSScrapArray<RE::BSScript::Variable>&) { return true; } };
 
-        return VM.DispatchMethodCall(Handle, Script, Function, Arguments.AsFunction(), RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor>{});
+        return VM.DispatchMethodCall(Handle, Script, Function, Arguments, RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor>{});
     }
 
     [[nodiscard]] std::optional<std::uintptr_t> FindSetter(std::uintptr_t Begin, std::uintptr_t Vanilla)
